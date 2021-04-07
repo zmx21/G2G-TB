@@ -5,6 +5,7 @@ library(ggplot2)
 library(scales)
 library(phylolm)
 library(phangorn)
+library(geiger)
 VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path){
   host_genotype <- snpStats::read.plink(bed = G2G_Obj$host_path[lineage],select.snps = host_snp)
   host_dosage <- as(host_genotype$genotypes, Class = 'numeric')
@@ -69,32 +70,44 @@ GetUniqResults <- function(result_df){
   }))
 }
 
-FigtPhyloglm <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree){
-  host_genotype <- snpStats::read.plink(bed = G2G_Obj$host_path[lineage],select.snps = host_snp)
-  host_dosage <- as(host_genotype$genotypes, Class = 'numeric')
-  host_dosage_ordered <- host_dosage[match(G2G_Obj$both_IDs_to_keep[[lineage]]$FAM_ID,rownames(host_dosage)),]
-  
-  pathogen_dosage <- G2G_Obj$aa_matrix_filt[[lineage]][,AA_variant,drop = F]
-  pathogen_dosage_ordered <- pathogen_dosage[match(G2G_Obj$both_IDs_to_keep[[lineage]]$G_NUMBER,names(pathogen_dosage))]
-  
+FigtPhyloglm <- function(G2G_Obj,host_snp = NULL,AA_variant,lineage,phylotree,is_burden = T){
+  if(!is.null(host_snp)){
+    host_genotype <- snpStats::read.plink(bed = G2G_Obj$host_path[lineage],select.snps = host_snp)
+    host_dosage <- as(host_genotype$genotypes, Class = 'numeric')
+    host_dosage_ordered <- host_dosage[match(G2G_Obj$both_IDs_to_keep[[lineage]]$FAM_ID,rownames(host_dosage)),]
+  }
+  if(is_burden){
+    pathogen_dosage <- G2G_Obj$gene_burden_non_syn[,AA_variant,drop = F]
+    ids_to_keep <- rownames(pathogen_dosage)
+    pathogen_dosage_ordered <- pathogen_dosage[match(G2G_Obj$both_IDs_to_keep[[lineage]]$G_NUMBER,ids_to_keep),]
+  }else{
+    pathogen_dosage <- G2G_Obj$aa_matrix_filt[[lineage]][,AA_variant,drop = F]
+    pathogen_dosage_ordered <- pathogen_dosage[match(G2G_Obj$both_IDs_to_keep[[lineage]]$G_NUMBER,names(pathogen_dosage))]
+  }
+
   tree <- ape::read.tree(phylotree)
-  tree_filt <- ape::keep.tip(tree,names(pathogen_dosage))
+  tree_filt <- ape::keep.tip(tree,ids_to_keep)
   
-  metadata <- data.frame(ID = names(pathogen_dosage_ordered),Host_SNP = host_dosage_ordered,Patho_Variant = pathogen_dosage_ordered)
-  rownames(metadata) <- metadata$ID
-  fit <- phylolm('Patho_Variant ~ Host_SNP',data = metadata,phy = tree_filt,method = 'logistic_MPLE',boot = 1000)
-  
+  if(!is.null(host_snp)){
+    metadata <- data.frame(ID = names(pathogen_dosage_ordered),Host_SNP = host_dosage_ordered,Patho_Variant = pathogen_dosage_ordered)
+    rownames(metadata) <- metadata$ID
+    fit <- phylolm('Patho_Variant ~ Host_SNP',data = metadata,phy = tree_filt,method = 'logistic_MPLE',boot = 1000)
+  }else{
+    fit <- fitDiscrete(phy = tree_filt,dat = factor(pathogen_dosage_ordered),model = 'ER',transform = 'lambda')
+    return(fit$opt$lambda)
+  }
+
 }
 # L3_snps <- c('rs925411')
 
-L3_snps <- c('rs925411','rs10476842','rs55836634','rs7584562','rs868919')
-L3_hits <- lapply(L3_snps,function(x) GetUniqResults(L3_Results_AFGR) %>% dplyr::filter(ID == x))
-lapply(1:length(L3_snps),function(i) VisualizeG2G(G2G_Obj=G2G_Obj_AFGR,
-                                                            host_snp = L3_snps[i],
-                                                            AA_variant = L3_hits[[i]]$AA,
-                                                            lineage = 'L3',
-                                                            phylotree = '~/G2G_TB/data/Mtb/fasttree_TBDar_022021_1239',
-                                                            out_path <- '~/G2G_TB/results/AFGR/PLINK/PC_3_pPC_0/'))
+# L3_snps <- c('rs925411','rs10476842','rs55836634','rs7584562','rs868919')
+# L3_hits <- lapply(L3_snps,function(x) GetUniqResults(L3_Results_AFGR) %>% dplyr::filter(ID == x))
+# lapply(1:length(L3_snps),function(i) VisualizeG2G(G2G_Obj=G2G_Obj_AFGR,
+#                                                             host_snp = L3_snps[i],
+#                                                             AA_variant = L3_hits[[i]]$AA,
+#                                                             lineage = 'L3',
+#                                                             phylotree = '~/G2G_TB/data/Mtb/fasttree_TBDar_022021_1239',
+#                                                             out_path <- '~/G2G_TB/results/AFGR/PLINK/PC_3_pPC_0/'))
 
 # FigtPhyloglm(G2G_Obj_AFGR,'rs925411','fixA_Rv3029c_p.Thr67Met','L3','~/G2G_TB/data/Mtb/fasttree_TBDar_022021_1239')
 
@@ -118,3 +131,13 @@ lapply(1:length(L3_snps),function(i) VisualizeG2G(G2G_Obj=G2G_Obj_AFGR,
 # 
 # # L3_Results_Tanz_Uniq <- GetUniqResults(L3_Results_Tanz)
 # rs925411 <- snpStats::read.plink(bed = '/home/zmxu/G2G_TB/data/WGS/WGS_Host_Data/rs925411.bed',select.snps = 'rs925411')
+
+# burden_lambda <- pbmclapply(colnames(G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn)[x=sample(1:ncol(G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn),size = 20,replace = F)],function(x) FigtPhyloglm(G2G_Obj_AFGR_Tanz_ChrX_SIFT,AA_variant = x,lineage = 'ALL',phylotree = '~/G2G_TB/data/Mtb/fasttree_TBDar_022021_1239'),mc.cores = 10)
+
+pPC1_p <- sapply(1:ncol(G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn),function(i) summary(glm(formula = 'y ~ PC1 + PC2 + PC3 + PC4 + PC5',data = data.frame(G2G_Obj_AFGR_Tanz_ChrX_SIFT$vir_pPCs[['ALL']],y = G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn[,i])))$coefficients['PC1','Pr(>|t|)'])
+pPC2_p <- sapply(1:ncol(G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn),function(i) summary(glm(formula = 'y ~ PC1 + PC2 + PC3 + PC4 + PC5',data = data.frame(G2G_Obj_AFGR_Tanz_ChrX_SIFT$vir_pPCs[['ALL']],y = G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn[,i])))$coefficients['PC2','Pr(>|t|)'])
+pPC3_p <- sapply(1:ncol(G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn),function(i) summary(glm(formula = 'y ~ PC1 + PC2 + PC3 + PC4 + PC5',data = data.frame(G2G_Obj_AFGR_Tanz_ChrX_SIFT$vir_pPCs[['ALL']],y = G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn[,i])))$coefficients['PC3','Pr(>|t|)'])
+pPC4_p <- sapply(1:ncol(G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn),function(i) summary(glm(formula = 'y ~ PC1 + PC2 + PC3 + PC4 + PC5',data = data.frame(G2G_Obj_AFGR_Tanz_ChrX_SIFT$vir_pPCs[['ALL']],y = G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn[,i])))$coefficients['PC4','Pr(>|t|)'])
+pPC5_p <- sapply(1:ncol(G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn),function(i) summary(glm(formula = 'y ~ PC1 + PC2 + PC3 + PC4 + PC5',data = data.frame(G2G_Obj_AFGR_Tanz_ChrX_SIFT$vir_pPCs[['ALL']],y = G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn[,i])))$coefficients['PC5','Pr(>|t|)'])
+
+mdl <- lapply(1:ncol(G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn),function(i) glm(formula = 'y ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10',data = data.frame(G2G_Obj_AFGR_Tanz_ChrX_SIFT$vir_pPCs[['ALL']],y = G2G_Obj_AFGR_Tanz_ChrX_SIFT$gene_burden_non_syn[,i])))

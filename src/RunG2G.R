@@ -64,13 +64,25 @@ GetParsedMapping <- function(DATA_DIR = '~/G2G_TB/data/'){
   return(parsed_mapping)
 }
 
+GetMAC <- function(AA_Matrix_filt){
+  MAC <- apply(AA_Matrix_filt,2,function(x) {
+    no_na <- x[!is.na(x)]
+    if(length(no_na) == 0){
+      return(0)
+    }
+    no_na_binary <- ifelse(no_na == 0,0,1)
+    return(ifelse(length(unique(no_na_binary)) != 1,min(table(no_na_binary)),length(no_na_binary) - min(table(no_na_binary))))
+  })
+  return(MAC)
+}
 ConstructpPCA <- function(AA_Table,Phylo_Tree_Path,ID_Mapping_df,pPCA = T,mac_thresh = 5){
   tree <- ape::read.tree(Phylo_Tree_Path)
   ID_Mapping_df_filt <- dplyr::filter(ID_Mapping_df,G_NUMBER %in% tree$tip.label & !is.na(LINEAGE))
   
   #Separate based on LINEAGES
   unique_lineages <- sort(unique(ID_Mapping_df_filt$LINEAGE))
-  lineage_samples <- lapply(unique_lineages,function(x) dplyr::filter(ID_Mapping_df_filt,LINEAGE == x)$G_NUMBER)
+  unique_lineages <- c(unique_lineages,unlist(sapply(2:(length(unique_lineages)-1),function(x) apply(combn(unique_lineages,x),2,function(y) paste0(sort(y),collapse = '_')))))
+  lineage_samples <- lapply(unique_lineages,function(x) dplyr::filter(ID_Mapping_df_filt,LINEAGE %in% strsplit(x,split = '_')[[1]])$G_NUMBER)
   #Add in index which cover all LINEAGES
   lineage_samples <- c(list(ID_Mapping_df_filt$G_NUMBER),lineage_samples)
   names(lineage_samples) <- c('ALL',unique_lineages)
@@ -80,7 +92,7 @@ ConstructpPCA <- function(AA_Table,Phylo_Tree_Path,ID_Mapping_df,pPCA = T,mac_th
   for(i in 1:length(lineage_samples)){
     tree_subset <-ape::keep.tip(tree, lineage_samples[[i]])
     AA_Table_filt <- AA_Table[tree_subset$tip.label,]
-    MAC <- apply(AA_Table_filt,2,function(x) ifelse(length(unique(x)) != 1,min(table(x)),nrow(AA_Table_filt) - min(table(x))))
+    MAC <- GetMAC(AA_Table_filt)
     
     if(pPCA){
       vir_4d <- phylobase::phylo4d(tree_subset, AA_Table_filt[,MAC > mac_thresh])
@@ -105,15 +117,17 @@ FilterAAMatrix <- function(AA_Matrix,Lineage_Df,MAC_Thresh){
   #Keep samples where Host data exists
   AA_Matrix_filt <- AA_Matrix[Lineage_Df$ALL$G_NUMBER,]
   #Keep variants which pass unstratified MAC threshold
-  MAC_AA_Matrix_filt <-  apply(AA_Matrix_filt,2,function(x) ifelse(length(unique(x)) != 1,min(table(x)),nrow(AA_Matrix_filt) - min(table(x))))
+  MAC_AA_Matrix_filt <- GetMAC(AA_Matrix_filt)
   AA_Matrix_filt <- AA_Matrix_filt[,MAC_AA_Matrix_filt > MAC_Thresh]
+  #Remove Missing Variants/Genes
+  AA_Matrix_filt <- AA_Matrix_filt[,!apply(AA_Matrix_filt,2,function(x) all(is.na(x)))]
   
   #Assign variants to lineages
-  strat_table <- lapply(1:ncol(AA_Matrix_filt),function(i) table(AA_Matrix_filt[,i],Lineage_Df$ALL$LINEAGE))
+  strat_table <- lapply(1:ncol(AA_Matrix_filt),function(i) table(ifelse(AA_Matrix_filt[,i]==0,0,1),Lineage_Df$ALL$LINEAGE))
   strat_assng <- vector(mode = 'character',length = length(strat_table))
   for(i in 1:length(strat_table)){
     cur_strat <- strat_table[[i]]
-    MAC_by_lineage <- apply(cur_strat,2,function(x) min(x))
+    MAC_by_lineage <- apply(cur_strat,2,function(x) min(x,na.rm = T))
     #If a variant is perfectly stratified by lineage and there are no variability within a lineage, exclude from analysis
     if(sum(MAC_by_lineage > MAC_Thresh) == 0){
       strat_assng[i] <- NA
@@ -121,13 +135,16 @@ FilterAAMatrix <- function(AA_Matrix,Lineage_Df,MAC_Thresh){
     }else if (sum(MAC_by_lineage > MAC_Thresh) == 1){
       strat_assng[i] <- names(MAC_by_lineage)[which(MAC_by_lineage > MAC_Thresh)]
     }else{
-      strat_assng[i] <- 'ALL'
+      strat_assng[i] <- paste0(sort(names(MAC_by_lineage)[which(MAC_by_lineage > MAC_Thresh)]),collapse = '_')
     }
   }
   
   #Construct AA Matrix for each lineage
   uniq_assgn <- sort(unique(strat_assng))
   uniq_assgn <- uniq_assgn[!is.na(uniq_assgn)]
+  #Exclude ALL lineage (Will be run seperately anyways)
+  uniq_assgn <- uniq_assgn[uniq_assgn != paste0(sort(unique(Lineage_Df$ALL$LINEAGE)),collapse = '_')] 
+  #For each gene, assign to lineage groups
   AA_Matrix_filt_by_lineage <- lapply(uniq_assgn,function(x) AA_Matrix_filt[Lineage_Df[[x]]$G_NUMBER,which(strat_assng == x)])
   names(AA_Matrix_filt_by_lineage) <- uniq_assgn
   
@@ -209,36 +226,36 @@ SetUpG2G <- function(DATA_DIR,SOFTWARE_DIR,OUT_DIR,Ref_Panel = 'AFGR',Host_MAF,P
     both_IDs_to_keep[[i]] <- dplyr::filter(pathogen_IDs_to_keep,PATIENT_ID %in% host_IDs_simple)
     both_IDs_to_keep[[i]]$FAM_ID <- host_IDs[match(both_IDs_to_keep[[i]]$PATIENT_ID,host_IDs_simple)]
     write(both_IDs_to_keep[[i]]$FAM_ID,file = glue::glue("{OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt"))
-    
+
     #Write out PLINK files with samples to keep
     system(
       glue::glue(
         "{PLINK}2 --bfile {OUT_DIR}/{Ref_Panel}/TB_DAR_Imputed_GWAS --keep {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --indiv-sort f {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw"
       )
     )
-    
+
     #Apply MAF Filter
     system(
       glue::glue(
         "{PLINK} --bfile {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw --impute-sex --make-bed --out {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw2"
       )
     )
-    
+
     #Impute Sex
     system(
       glue::glue(
         "{PLINK}2 --bfile {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw2 --maf {Host_MAF} --indiv-sort f {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G"
       )
     )
-    
+
     system(glue::glue("rm {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw*"))
     #Order and filter host PCs
     host_PCs[[i]] <- dplyr::left_join(data.frame('IID' = both_IDs_to_keep[[i]]$FAM_ID),host_PCs_raw[,-1],by=c('IID'='V2'))
     colnames(host_PCs[[i]]) <- c('IID',paste0('PC',seq(1,ncol(host_PCs[[i]])-1,1)))
-    
+
     #Order and filter pPCs
     vir_pPCs[[i]] <- dplyr::left_join(data.frame(G_NUMBER=both_IDs_to_keep[[i]]$G_NUMBER),vir_pPCs[[i]])
-    
+
     #Order and filter covars
     covars[[i]] <- dplyr::left_join(data.frame(IID=both_IDs_to_keep[[i]]$FAM_ID),covars_raw) %>% dplyr::select(-contains("PC"))
   }
@@ -249,7 +266,7 @@ SetUpG2G <- function(DATA_DIR,SOFTWARE_DIR,OUT_DIR,Ref_Panel = 'AFGR',Host_MAF,P
   
   #Unstratified AA matrix
   aa_matrix_raw <- aa_matrix[both_IDs_to_keep[['ALL']]$G_NUMBER,]
-  aa_matrix_MAC <- apply(aa_matrix_raw,2,function(x) ifelse(length(unique(x)) != 1,min(table(x)),nrow(aa_matrix_raw) - min(table(x))))
+  aa_matrix_MAC <- GetMAC(aa_matrix_raw)
   aa_matrix_raw <- aa_matrix_raw[,aa_matrix_MAC > Pathogen_MAC_AA]
 
   #Gene Burden Matrix
@@ -258,9 +275,15 @@ SetUpG2G <- function(DATA_DIR,SOFTWARE_DIR,OUT_DIR,Ref_Panel = 'AFGR',Host_MAF,P
   }else{
     gene_burden <- readRDS(glue::glue("{Mtb_Out_Syn}Gene_Burden.rds")) 
   }
-  gene_burden_non_syn <- gene_burden$non_syn_burden[both_IDs_to_keep[['ALL']]$G_NUMBER,]
-  gene_burden_syn <- gene_burden$syn_burden[both_IDs_to_keep[['ALL']]$G_NUMBER,]
   
+  gene_burden_non_syn <- gene_burden$non_syn_burden[both_IDs_to_keep[['ALL']]$G_NUMBER,]
+  #Stratify non_syn matrix according to lineage
+  gene_burden_non_syn_filt <- FilterAAMatrix(gene_burden_non_syn,both_IDs_to_keep,MAC_Thresh = Pathogen_MAC_AA) 
+  #Unstratified non_syn matrix, with MAC filter
+  gene_burden_non_syn_filt$ALL <- gene_burden_non_syn[,GetMAC(gene_burden_non_syn) > Pathogen_MAC_AA]
+  
+  gene_burden_syn <- gene_burden$syn_burden[both_IDs_to_keep[['ALL']]$G_NUMBER,]
+
   #Path to VCF file (for each lineage)
   host_path <- glue::glue("{OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)}/TB_DAR_Imputed_G2G")
   names(host_path) <- names(vir_pPCs)
@@ -280,6 +303,7 @@ SetUpG2G <- function(DATA_DIR,SOFTWARE_DIR,OUT_DIR,Ref_Panel = 'AFGR',Host_MAF,P
               host_path = host_path,
               raw_pPCA = vir_pPCA,
               gene_burden_non_syn=gene_burden_non_syn,
+              gene_burden_non_syn_filt = gene_burden_non_syn_filt,
               gene_burden_syn = gene_burden_syn))
 }
 
@@ -1003,7 +1027,7 @@ RunInteraction <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'PLINK'
   }
 }
 
-RunG2GBurden <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'PLINK',n_PC = 3,n_pPC = 0,n_cores = 20,covars_to_incl = c(),gene = c(),X_Chr=T,MAC_Thresh = 10,binarize = T,incl_syn = F){
+RunG2GBurden <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'PLINK',n_PC = 3,n_pPC = 0,n_cores = 20,covars_to_incl = c(),gene = c(),lineage = c(),X_Chr=T,binarize = T,incl_syn = F){
   OUT_PATH <- glue::glue("{OUT_DIR}/{Ref_Panel}")
   system(glue::glue("mkdir -p {OUT_PATH}"))
   
@@ -1023,112 +1047,255 @@ RunG2GBurden <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'PLINK',n
   system(glue::glue("mkdir -p {OUT_PATH}"))
   
   if (tool == 'PLINK'){
-    cur_lineage <- 'ALL'
-    OUT_PATH_Lineage <- glue::glue("{OUT_PATH}/LINEAGE_{cur_lineage}/")
-    system(glue::glue("mkdir -p {OUT_PATH_Lineage}"))
-    system(glue::glue("mkdir -p {OUT_PATH_Lineage}/tmp"))
-    
-    #Get IDD and FID, ensure they're in correct order
-    fam_file <- data.table::fread(glue::glue("{G2G_Obj$host_path[cur_lineage]}.fam"))
-    colnames(fam_file)[1:2] <- c('FID','IID')
-    if(!all(fam_file$IID == G2G_Obj$both_IDs_to_keep[[cur_lineage]]$FAM_ID)){
-      stop('Sample order incorrect')
+    if(length(lineage)==0 & length(gene) == 0){
+      lineages_to_run <- unique(names(G2G_Obj$gene_burden_non_syn_filt))
+    }else if(length(lineage)==0 & length(gene) != 0){
+      lineages_to_run <- names(G2G_Obj$gene_burden_non_syn_filt)[sapply(G2G_Obj$gene_burden_non_syn_filt,function(x) any(gene %in% colnames(x)))]
+    }else{
+      lineages_to_run <- lineage
     }
-    
-    #Write out Burden Matrix
-    cur_burden_matrix <- G2G_Obj$gene_burden_non_syn
-    MAC <- apply(cur_burden_matrix,2,function(x) min(sum(x!=0),sum(x==0)))
-    cur_burden_matrix_filt <- cur_burden_matrix[,MAC > MAC_Thresh]
-    #Binarize matrix if specified (dominant, case-control model)
-    if(binarize){
-      cur_burden_matrix_filt <- apply(cur_burden_matrix_filt,2,function(x) ifelse(x!=0,1,0))
-    }
-    
-    cur_burden_Matrix_mat <- cbind(fam_file[,c(1,2)],as.matrix(cur_burden_matrix_filt))
-    colnames(cur_burden_Matrix_mat) <- c('FID','IID',colnames(cur_burden_matrix_filt))
-    
-    #Write out burden matrix
-    data.table::fwrite(cur_burden_Matrix_mat,col.names = T,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/Burden_outcome.txt"),na = 'NA',quote = F)
-    
-    #Store PCs and covars
-    host_PCs <- G2G_Obj$host_PCs[[cur_lineage]]
-    host_PCs <- dplyr::select(host_PCs,'IID',paste0('PC',1:n_PC))
-    
-    if(n_pPC != 0){
-      pPCs <- G2G_Obj$vir_pPCs[[cur_lineage]]
-      pPCs <- dplyr::select(pPCs,PATIENT_ID,paste0('PC',1:n_pPC))
-      colnames(pPCs) <- c('PATIENT_ID',paste0('pPC',1:n_pPC))
-    }
-    if(length(covars_to_incl) > 0){
-      covars_num_discrete <- G2G_Obj$covars[[cur_lineage]]
-      covars_num_discrete <- dplyr::select(covars_num_discrete,'IID',covars_to_incl)
-      covars_num_discrete[is.na(covars_num_discrete)] <- 'NONE'
+    for(i in 1:length(lineages_to_run)){
+      cur_lineage <- lineages_to_run[i]
+      OUT_PATH_Lineage <- glue::glue("{OUT_PATH}/LINEAGE_{cur_lineage}/")
+      system(glue::glue("mkdir -p {OUT_PATH_Lineage}"))
+      system(glue::glue("mkdir -p {OUT_PATH_Lineage}/tmp"))
+      
+      #Get IDD and FID, ensure they're in correct order
+      fam_file <- data.table::fread(glue::glue("{G2G_Obj$host_path[cur_lineage]}.fam"))
+      colnames(fam_file)[1:2] <- c('FID','IID')
+      if(!all(fam_file$IID == G2G_Obj$both_IDs_to_keep[[cur_lineage]]$FAM_ID)){
+        stop('Sample order incorrect')
+      }
+      
+      #Write out Burden Matrix
+      cur_burden_matrix_filt <- G2G_Obj$gene_burden_non_syn_filt[[cur_lineage]]
+      #Binarize matrix if specified (dominant, case-control model)
+      if(binarize){
+        cur_burden_matrix_filt <- apply(cur_burden_matrix_filt,2,function(x) ifelse(x!=0,1,0))
+      }
+      rownames(cur_burden_matrix_filt) <- rownames(G2G_Obj$gene_burden_non_syn_filt[[cur_lineage]])
+      cur_burden_Matrix_mat <- cbind(fam_file[,c(1,2)],as.matrix(cur_burden_matrix_filt))
+      colnames(cur_burden_Matrix_mat) <- c('FID','IID',colnames(cur_burden_matrix_filt))
+      
+      #Write out burden matrix
+      data.table::fwrite(cur_burden_Matrix_mat,col.names = T,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/Burden_outcome.txt"),na = 'NA',quote = F)
+      
+      #Store PCs and covars
+      host_PCs <- G2G_Obj$host_PCs[[cur_lineage]]
+      host_PCs <- dplyr::select(host_PCs,'IID',paste0('PC',1:n_PC))
       
       if(n_pPC != 0){
-        covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% 
-          dplyr::left_join(pPCs %>% dplyr::left_join(G2G_Obj$both_IDs_to_keep[[cur_lineage]] %>% dplyr::select(PATIENT_ID,IID=FAM_ID),by=c('PATIENT_ID' = 'PATIENT_ID')) %>% dplyr::select(-PATIENT_ID),by=c('IID'='IID')) %>% 
-          dplyr::left_join(covars_num_discrete,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
-      }else{
-        covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% 
-          dplyr::left_join(covars_num_discrete,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
+        pPCs <- G2G_Obj$vir_pPCs[[cur_lineage]]
+        pPCs <- dplyr::select(pPCs,PATIENT_ID,paste0('PC',1:n_pPC))
+        colnames(pPCs) <- c('PATIENT_ID',paste0('pPC',1:n_pPC))
       }
+      if(length(covars_to_incl) > 0){
+        covars_num_discrete <- G2G_Obj$covars[[cur_lineage]]
+        covars_num_discrete <- dplyr::select(covars_num_discrete,'IID',covars_to_incl)
+        covars_num_discrete[is.na(covars_num_discrete)] <- 'NONE'
+        
+        if(n_pPC != 0){
+          covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% 
+            dplyr::left_join(pPCs %>% dplyr::left_join(G2G_Obj$both_IDs_to_keep[[cur_lineage]] %>% dplyr::select(PATIENT_ID,IID=FAM_ID),by=c('PATIENT_ID' = 'PATIENT_ID')) %>% dplyr::select(-PATIENT_ID),by=c('IID'='IID')) %>% 
+            dplyr::left_join(covars_num_discrete,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
+        }else{
+          covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% 
+            dplyr::left_join(covars_num_discrete,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
+        }
+      }else{
+        if(n_pPC != 0){
+          covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% 
+            dplyr::left_join(pPCs %>% dplyr::left_join(G2G_Obj$both_IDs_to_keep[[cur_lineage]] %>% dplyr::select(PATIENT_ID,IID=FAM_ID),by=c('PATIENT_ID' = 'PATIENT_ID')) %>% dplyr::select(-PATIENT_ID),by=c('IID'='IID')) %>%
+            dplyr::relocate(FID,IID)
+        }else{
+          covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
+        }
+      }
+      
+      #Change categorial binary covariates to numeric (0 and 1)
+      cat_covars <- which(sapply(3:ncol(covars),function(q) any(is.character(as.vector(t(covars[,..q]))))))
+      if(length(cat_covars) > 0){
+        for(col in (cat_covars+2)){
+          covars[,col] <- as.integer(as.factor(t(covars[,..col]))) - 1
+        }
+      }
+      data.table::fwrite(covars,col.names = F,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/plink-covars.txt"),na = 'NA',quote = F)
+      covar_path <- glue::glue("{OUT_PATH_Lineage}/tmp/plink-covars.txt")
+      
+      #Run association study for each AA variant in the current lineage
+      Burden_Matrix_No_ID <- cur_burden_Matrix_mat[,-c(1,2)]
+      #Run association study for each AA variant in the current lineage
+      if(length(gene) == 0 & !incl_syn){
+        chunks <- 1:ncol(Burden_Matrix_No_ID)
+      }else if(length(gene) == 0 & incl_syn){
+        chunks <- match(intersect(colnames(Burden_Matrix_No_ID),colnames(G2G_Obj$gene_burden_syn)),colnames(Burden_Matrix_No_ID))
+      }else{
+        chunks <- match(gene,colnames(Burden_Matrix_No_ID))
+      }
+      genes <- colnames(Burden_Matrix_No_ID)
+      for(k in 1:length(chunks)){
+        cur_pathogen_gene <- genes[chunks[k]]
+        var_std <- ' --covar-variance-standardize'
+        if(incl_syn){
+          cur_covars <- cbind(covars,data.frame(Syn_Count = G2G_Obj$gene_burden_syn[match(rownames(cur_burden_matrix_filt),rownames(G2G_Obj$gene_burden_syn)),
+                                                                                    match(cur_pathogen_gene,colnames(G2G_Obj$gene_burden_syn))]))
+          data.table::fwrite(cur_covars,col.names = F,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/{cur_pathogen_gene}-covars.txt"),na = 'NA',quote = F)
+          covar_path <- glue::glue("{OUT_PATH_Lineage}/tmp/{cur_pathogen_gene}-covars.txt")
+          var_std <- ''
+        }
+        
+        if(X_Chr){
+          tryCatch(system(
+            glue::glue(
+              "{PLINK}2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --glm cc-residualize hide-covar{var_std} --1 --pheno {OUT_PATH_Lineage}/tmp/Burden_outcome.txt --pheno-col-nums {chunks[k]+2} --covar {covar_path} --out {OUT_PATH_Lineage}{cur_pathogen_gene}"
+            )
+          ))
+          
+        }else{
+          tryCatch(system(
+            glue::glue(
+              "{PLINK}2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm cc-residualize hide-covar {var_std} --1 --pheno {OUT_PATH_Lineage}/tmp/Burden_outcome.txt --pheno-col-nums {chunks[k]+2} --covar {covar_path} --out {OUT_PATH_Lineage}{cur_pathogen_gene}"
+            )
+          ))
+          
+        }
+        system(glue::glue('pigz --fast {OUT_PATH_Lineage}{cur_pathogen_gene}*.hybrid'))
+      }
+    }
+  }
+}
+
+RunInteractionBurden <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'PLINK',n_PC = 3,n_pPC = 0,n_cores = 20,covars_to_incl = c(),gene = c(),lineage = c(),X_Chr=T,incl_syn = T,binarize = T){
+  OUT_PATH <- glue::glue("{OUT_DIR}/{Ref_Panel}")
+  system(glue::glue("mkdir -p {OUT_PATH}"))
+  
+  PLINK = '/home/zmxu/Software/plink'
+  
+  OUT_PATH <- glue::glue("{OUT_PATH}/{tool}/")
+  system(glue::glue("mkdir -p {OUT_PATH}"))
+  if(length(covars_to_incl) > 0 & incl_syn){
+    OUT_PATH <- glue::glue("{OUT_PATH}/PC_{n_PC}_pPC_{n_pPC}_cov_{paste0(sapply(covars_to_incl,function(x) gsub(x=x,pattern='_',replacement='')),collapse = '-')}_Syn/")
+  }else if(length(covars_to_incl) > 0){
+    OUT_PATH <- glue::glue("{OUT_PATH}/PC_{n_PC}_pPC_{n_pPC}_cov_{paste0(sapply(covars_to_incl,function(x) gsub(x=x,pattern='_',replacement='')),collapse = '-')}/")
+  }else if(incl_syn){
+    OUT_PATH <- glue::glue("{OUT_PATH}/PC_{n_PC}_pPC_{n_pPC}_Syn/")
+  }else{
+    OUT_PATH <- glue::glue("{OUT_PATH}/PC_{n_PC}_pPC_{n_pPC}/")
+  }
+  system(glue::glue("mkdir -p {OUT_PATH}"))
+  
+  if (tool == 'PLINK'){
+    if(length(lineage)==0 & length(gene) == 0){
+      lineages_to_run <- unique(names(G2G_Obj$gene_burden_non_syn_filt))
+    }else if(length(lineage)==0 & length(gene) != 0){
+      lineages_to_run <- names(G2G_Obj$gene_burden_non_syn_filt)[sapply(G2G_Obj$gene_burden_non_syn_filt,function(x) any(gene %in% colnames(x)))]
     }else{
+      lineages_to_run <- lineage
+    }
+    for(i in 1:length(lineages_to_run)){
+      cur_lineage <- lineages_to_run[i]
+      OUT_PATH_Lineage <- glue::glue("{OUT_PATH}/LINEAGE_{cur_lineage}/")
+      system(glue::glue("mkdir -p {OUT_PATH_Lineage}"))
+      system(glue::glue("mkdir -p {OUT_PATH_Lineage}/tmp"))
+      
+      #Get IDD and FID, ensure they're in correct order
+      fam_file <- data.table::fread(glue::glue("{G2G_Obj$host_path[cur_lineage]}.fam"))
+      colnames(fam_file)[1:2] <- c('FID','IID')
+      if(!all(fam_file$IID == G2G_Obj$both_IDs_to_keep[[cur_lineage]]$FAM_ID)){
+        stop('Sample order incorrect')
+      }
+      
+      #Write out Burden Matrix
+      cur_burden_matrix_filt <- G2G_Obj$gene_burden_non_syn_filt[[cur_lineage]]
+      #Binarize matrix if specified (dominant, case-control model)
+      if(binarize){
+        cur_burden_matrix_filt <- apply(cur_burden_matrix_filt,2,function(x) ifelse(x!=0,1,0))
+      }
+      rownames(cur_burden_matrix_filt) <- rownames(G2G_Obj$gene_burden_non_syn_filt[[cur_lineage]])
+      cur_burden_Matrix_mat <- cbind(fam_file[,c(1,2)],as.matrix(cur_burden_matrix_filt))
+      colnames(cur_burden_Matrix_mat) <- c('FID','IID',colnames(cur_burden_matrix_filt))
+      
+      #Write out burden matrix
+      data.table::fwrite(cur_burden_Matrix_mat,col.names = T,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/Burden_outcome.txt"),na = 'NA',quote = F)
+      
+      #Store PCs and covars
+      host_PCs <- G2G_Obj$host_PCs[[cur_lineage]]
+      host_PCs <- dplyr::select(host_PCs,'IID',paste0('PC',1:n_PC))
+      
       if(n_pPC != 0){
-        covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% 
-          dplyr::left_join(pPCs %>% dplyr::left_join(G2G_Obj$both_IDs_to_keep[[cur_lineage]] %>% dplyr::select(PATIENT_ID,IID=FAM_ID),by=c('PATIENT_ID' = 'PATIENT_ID')) %>% dplyr::select(-PATIENT_ID),by=c('IID'='IID')) %>%
-          dplyr::relocate(FID,IID)
+        pPCs <- G2G_Obj$vir_pPCs[[cur_lineage]]
+        pPCs <- dplyr::select(pPCs,PATIENT_ID,paste0('PC',1:n_pPC))
+        colnames(pPCs) <- c('PATIENT_ID',paste0('pPC',1:n_pPC))
+      }
+      if(length(covars_to_incl) > 0){
+        covars_num_discrete <- G2G_Obj$covars[[cur_lineage]]
+        covars_num_discrete <- dplyr::select(covars_num_discrete,'IID',covars_to_incl)
+        covars_num_discrete[is.na(covars_num_discrete)] <- 'NONE'
+        
+        if(n_pPC != 0){
+          covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% 
+            dplyr::left_join(pPCs %>% dplyr::left_join(G2G_Obj$both_IDs_to_keep[[cur_lineage]] %>% dplyr::select(PATIENT_ID,IID=FAM_ID),by=c('PATIENT_ID' = 'PATIENT_ID')) %>% dplyr::select(-PATIENT_ID),by=c('IID'='IID')) %>% 
+            dplyr::left_join(covars_num_discrete,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
+        }else{
+          covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% 
+            dplyr::left_join(covars_num_discrete,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
+        }
       }else{
-        covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
+        if(n_pPC != 0){
+          covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% 
+            dplyr::left_join(pPCs %>% dplyr::left_join(G2G_Obj$both_IDs_to_keep[[cur_lineage]] %>% dplyr::select(PATIENT_ID,IID=FAM_ID),by=c('PATIENT_ID' = 'PATIENT_ID')) %>% dplyr::select(-PATIENT_ID),by=c('IID'='IID')) %>%
+            dplyr::relocate(FID,IID)
+        }else{
+          covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
+        }
       }
-    }
-    
-    #Change categorial binary covariates to numeric (0 and 1)
-    cat_covars <- which(sapply(3:ncol(covars),function(q) any(is.character(as.vector(t(covars[,..q]))))))
-    if(length(cat_covars) > 0){
-      for(col in (cat_covars+2)){
-        covars[,col] <- as.integer(as.factor(t(covars[,..col]))) - 1
+      
+      #Change categorial binary covariates to numeric (0 and 1)
+      cat_covars <- which(sapply(3:ncol(covars),function(q) any(is.character(as.vector(t(covars[,..q]))))))
+      if(length(cat_covars) > 0){
+        for(col in (cat_covars+2)){
+          covars[,col] <- as.integer(as.factor(t(covars[,..col]))) - 1
+        }
       }
-    }
-    data.table::fwrite(covars,col.names = F,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/plink-covars.txt"),na = 'NA',quote = F)
-    covar_path <- glue::glue("{OUT_PATH_Lineage}/tmp/plink-covars.txt")
-    
-    #Run association study for each AA variant in the current lineage
-    Burden_Matrix_No_ID <- cur_burden_Matrix_mat[,-c(1,2)]
-    #Run association study for each AA variant in the current lineage
-    if(length(gene) == 0 & !incl_syn){
-      chunks <- 1:ncol(Burden_Matrix_No_ID)
-    }else if(length(gene) == 0 & incl_syn){
-      chunks <- match(intersect(colnames(Burden_Matrix_No_ID),colnames(G2G_Obj$gene_burden_syn)),colnames(Burden_Matrix_No_ID))
-    }else{
-      chunks <- match(gene,colnames(Burden_Matrix_No_ID))
-    }
-    genes <- colnames(Burden_Matrix_No_ID)
-    for(k in 1:length(chunks)){
-      cur_pathogen_gene <- genes[chunks[k]]
-      var_std <- ' --covar-variance-standardize'
-      if(incl_syn){
-        cur_covars <- cbind(covars,data.frame(Syn_Count = G2G_Obj$gene_burden_syn[,match(cur_pathogen_gene,colnames(G2G_Obj$gene_burden_syn))]))
-        data.table::fwrite(cur_covars,col.names = F,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/{cur_pathogen_gene}-covars.txt"),na = 'NA',quote = F)
-        covar_path <- glue::glue("{OUT_PATH_Lineage}/tmp/{cur_pathogen_gene}-covars.txt")
-        var_std <- ''
-      }
-
-      if(X_Chr){
-        tryCatch(system(
-          glue::glue(
-            "{PLINK}2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --glm cc-residualize hide-covar{var_std} --1 --pheno {OUT_PATH_Lineage}/tmp/Burden_outcome.txt --pheno-col-nums {chunks[k]+2} --covar {covar_path} --out {OUT_PATH_Lineage}{cur_pathogen_gene}"
-          )
-        ))
-
+      
+      #Run association study for each AA variant in the current lineage
+      Burden_Matrix_No_ID <- cur_burden_Matrix_mat[,-c(1,2)]
+      #Run association study for each AA variant in the current lineage
+      if(length(gene) == 0 & !incl_syn){
+        chunks <- 1:ncol(Burden_Matrix_No_ID)
+      }else if(length(gene) == 0 & incl_syn){
+        chunks <- match(intersect(colnames(Burden_Matrix_No_ID),colnames(G2G_Obj$gene_burden_syn)),colnames(Burden_Matrix_No_ID))
       }else{
-        tryCatch(system(
-          glue::glue(
-            "{PLINK}2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm cc-residualize hide-covar {var_std} --1 --pheno {OUT_PATH_Lineage}/tmp/Burden_outcome.txt --pheno-col-nums {chunks[k]+2} --covar {covar_path} --out {OUT_PATH_Lineage}{cur_pathogen_gene}"
-          )
-        ))
-
+        chunks <- match(gene,colnames(Burden_Matrix_No_ID))
       }
-      system(glue::glue('pigz --fast {OUT_PATH_Lineage}{cur_pathogen_gene}*.hybrid'))
+      genes <- colnames(Burden_Matrix_No_ID)
+      
+      #Write out Phenotype
+      tb_score <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),G2G_Obj$tb_score[[cur_lineage]] %>% dplyr::select(IID,tb_score),by=c('IID'='IID')) %>% dplyr::relocate(FID,IID,tb_score)
+      data.table::fwrite(tb_score,col.names = T,quote = F,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/tb_score.txt"))
+      
+      for(k in 1:length(chunks)){
+        cur_pathogen_gene <- genes[chunks[k]]
+        if(incl_syn){
+          cur_covar <- cbind(covars[,1:2],
+                             Burden_Matrix_No_ID[,..cur_pathogen_gene,drop=FALSE],
+                             data.frame(Syn_Count = G2G_Obj$gene_burden_syn[match(rownames(cur_burden_matrix_filt),rownames(G2G_Obj$gene_burden_syn)),match(cur_pathogen_gene,colnames(G2G_Obj$gene_burden_syn))]),
+                             covars[,-c(1,2)])
+        }else{
+          cur_covar <- cbind(covars[,1:2],Burden_Matrix_No_ID[,..cur_pathogen_gene,drop=FALSE],covars[,-c(1,2)])
+        }
+        data.table::fwrite(cur_covar,col.names = T,quote = F,row.names = F,sep = ' ',na = 'NA',file = glue::glue("{OUT_PATH_Lineage}/tmp/{cur_pathogen_gene}.txt"))
+        
+        system(
+          glue::glue(
+            "{PLINK}2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --covar-variance-standardize --linear no-x-sex interaction --parameters 1-{ncol(cur_covar)} --pheno {OUT_PATH_Lineage}/tmp/tb_score.txt --covar {OUT_PATH_Lineage}/tmp/{cur_pathogen_gene}.txt --out {OUT_PATH_Lineage}{cur_pathogen_gene}"
+          )
+        )
+        system(glue::glue("grep 'ADD' {OUT_PATH_Lineage}{cur_pathogen_gene}.tb_score.glm.linear > {OUT_PATH_Lineage}{cur_pathogen_gene}.tb_score.glm.linear.add"))
+        system(glue::glue("{SOFTWARE_DIR}pigz --fast {OUT_PATH_Lineage}{cur_pathogen_gene}.tb_score.glm.linear.add"))
+        system(glue::glue("rm {OUT_PATH_Lineage}{cur_pathogen_gene}.tb_score.glm.linear"))
+        
+      }
     }
   }
 }
@@ -1242,11 +1409,12 @@ hits_L4 <- c("aceAa_Rv1915_p.Asp179Gly","cstA_Rv3063_p.Ser559Arg")
 # RunG2G(G2G_Obj_WGS_AFGR,SOFTWARE_DIR,'/home/zmxu/G2G_TB/results/',Ref_Panel = 'WGS_AFGR',tool = 'PLINK',n_cores = 22,n_PC = 5,n_pPC = 0,debug = F,lineage = 'L3')
 # RunG2G(G2G_Obj_WGS_AFGR,SOFTWARE_DIR,'/home/zmxu/G2G_TB/results/',Ref_Panel = 'WGS_AFGR',tool = 'PLINK',n_cores = 22,n_PC = 5,n_pPC = 0,debug = F,lineage = 'L4')
 
-RunG2GBurden(G2G_Obj_AFGR_Tanz_ChrX,SOFTWARE_DIR,'/home/zmxu/G2G_TB/burden_results/',Ref_Panel = 'AFGR_Tanz_ChrX',tool = 'PLINK',n_PC = 3,n_pPC = 2,n_cores = 20,X_Chr=T,MAC_Thresh = 10,binarize = T,incl_syn = F,gene = 'Rv3909_Rv3909')
-RunG2GBurden(G2G_Obj_AFGR_Tanz_ChrX_SIFT,SOFTWARE_DIR,'/home/zmxu/G2G_TB/burden_results_SIFT/',Ref_Panel = 'AFGR_Tanz_ChrX',tool = 'PLINK',n_PC = 3,n_pPC = 2,n_cores = 20,X_Chr=T,MAC_Thresh = 10,binarize = T,incl_syn = F,gene = 'Rv3909_Rv3909')
-  
-RunG2GBurden(G2G_Obj_AFGR_Tanz_ChrX,SOFTWARE_DIR,'/home/zmxu/G2G_TB/burden_results/',Ref_Panel = 'AFGR_Tanz_ChrX',tool = 'PLINK',n_PC = 3,n_pPC = 2,n_cores = 20,X_Chr=T,MAC_Thresh = 10,binarize = T,incl_syn = T,gene = 'Rv3909_Rv3909')
-RunG2GBurden(G2G_Obj_AFGR_Tanz_ChrX_SIFT,SOFTWARE_DIR,'/home/zmxu/G2G_TB/burden_results_SIFT/',Ref_Panel = 'AFGR_Tanz_ChrX',tool = 'PLINK',n_PC = 3,n_pPC = 2,n_cores = 20,X_Chr=T,MAC_Thresh = 10,binarize = T,incl_syn = T,gene = 'Rv3909_Rv3909')
+# RunG2GBurden(G2G_Obj_AFGR_Tanz_ChrX,SOFTWARE_DIR,'/home/zmxu/G2G_TB/burden_results/',Ref_Panel = 'AFGR_Tanz_ChrX',tool = 'PLINK',n_PC = 3,n_pPC = 2,n_cores = 20,X_Chr=T,binarize = T,incl_syn = F,gene = 'Rv3909_Rv3909')
+# RunG2GBurden(G2G_Obj_AFGR_Tanz_ChrX_SIFT,SOFTWARE_DIR,'/home/zmxu/G2G_TB/burden_results_SIFT/',Ref_Panel = 'AFGR_Tanz_ChrX',tool = 'PLINK',n_PC = 3,n_pPC = 0,n_cores = 20,X_Chr=T,binarize = T,incl_syn = F,gene = 'Rv3909_Rv3909')
+
+# RunInteractionBurden(G2G_Obj_AFGR_Tanz_ChrX,SOFTWARE_DIR,'/home/zmxu/G2G_TB/burden_interaction_results/',Ref_Panel = 'AFGR_Tanz_ChrX',tool = 'PLINK',n_PC = 3,n_pPC = 2,n_cores = 40,covars_to_incl = c('Age','Patient_Sex','HIV_Status'),X_Chr=T,binarize = T,incl_syn = F,lineage = 'ALL')
+# RunInteractionBurden(G2G_Obj_AFGR_Tanz_ChrX_SIFT,SOFTWARE_DIR,'/home/zmxu/G2G_TB/burden_interaction_results_SIFT/',Ref_Panel = 'AFGR_Tanz_ChrX',tool = 'PLINK',n_PC = 3,n_pPC = 2,n_cores = 40,covars_to_incl = c('Age','Patient_Sex','HIV_Status'),X_Chr=T,binarize = T,incl_syn = F,lineage = 'ALL')
+
 
 # int_results_ALL <- readRDS('~/G2G_TB/interaction_results/AFGR/PLINK/PC_3_pPC_0_cov_PatientSex-Age/LINEAGE_ALL/results.rds')
 # int_results_ALL <- int_results_ALL[sapply(int_results_ALL,nrow) > 0]
@@ -1389,8 +1557,8 @@ RunG2GBurden(G2G_Obj_AFGR_Tanz_ChrX_SIFT,SOFTWARE_DIR,'/home/zmxu/G2G_TB/burden_
 # saveRDS(results,glue::glue("~/G2G_TB/results/AFGR_Tanz_ChrX/PLINK/PC_3_pPC_0/LINEAGE_L4/results.rds"))
 
 
-Burden_Results_SIFT <- ViewResults('~/G2G_TB/burden_results_SIFT/AFGR_Tanz_ChrX/PLINK/PC_3_pPC_2_Syn/LINEAGE_ALL/results.rds',p_thresh = 5e-8 / length(readRDS('~/G2G_TB/burden_results_SIFT/AFGR_Tanz_ChrX/PLINK/PC_3_pPC_2_Syn/LINEAGE_ALL/results.rds')),bonf = F)
-View(do.call(rbind,lapply(1:length(Burden_Results_SIFT),function(i) {
-  cur_result <- Burden_Results_SIFT[[i]]
-  cbind(cur_result,data.frame(AA = rep(names(Burden_Results_SIFT)[i],nrow(cur_result))))
-  })) %>% dplyr::arrange('P'))
+# Burden_Results_SIFT <- ViewResults('~/G2G_TB/burden_results_SIFT/AFGR_Tanz_ChrX/PLINK/PC_3_pPC_2_Syn/LINEAGE_ALL/results.rds',p_thresh = 5e-8 / length(readRDS('~/G2G_TB/burden_results_SIFT/AFGR_Tanz_ChrX/PLINK/PC_3_pPC_2_Syn/LINEAGE_ALL/results.rds')),bonf = F)
+# View(do.call(rbind,lapply(1:length(Burden_Results_SIFT),function(i) {
+#   cur_result <- Burden_Results_SIFT[[i]]
+#   cbind(cur_result,data.frame(AA = rep(names(Burden_Results_SIFT)[i],nrow(cur_result))))
+#   })) %>% dplyr::arrange('P'))
