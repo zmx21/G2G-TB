@@ -1,0 +1,29 @@
+#File Path
+MTB_DATA: '../data/Mtb/'
+Pheno_DATA: '../data/pheno/'
+Genotyping_DATA: '../data/Genotyping/'
+HLA_Data: '../data/HLA/FourDigits/'
+SCRATCH_DIR: '../scratch/'
+RESULTS_DIR: '../results/'
+host_vcf: '../data/Genotyping/TB_DAR_AFGR_Tanz_Imputed_ChrX/AFGR_Tanz.imputed.vcf.gz'
+
+#Pathogen Variant Type Settings
+SIFT: 'False'
+Burden: 'False'
+Deletion: 'True'
+Analysis_Type: 'G2G' #or interaction
+Homo_Only: 'True'
+tool: 'PLINK'
+
+#Pathogen Settings
+Pathogen_MAC_pPCA: 5
+Pathogen_MAC_AA_Lineage: 10
+Pathogen_MAC_AA: 10
+N_pPC: 0
+
+#Host Settings
+Reference_Panel: "AFGR_Tanz_ChrX"
+Host_MAF: 0.05
+X_Chr: 'True'
+N_PC: 3
+covars_to_incl: 'NA'
