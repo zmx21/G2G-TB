@@ -45,7 +45,7 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5
   }
   system(glue::glue("mkdir -p {OUT_DIR}"))
   
-  saveRDS(list(),glue::glue("{OUT_DIR}/results.rds"))
+  saveRDS(list(),glue::glue("{OUT_DIR}/G2G_results.rds"))
   
   if (tool == 'PLINK' | tool == 'PLINK-FIRTH' | tool == 'HLA-PLINK' | tool == 'SAIGE' | tool == 'GMMAT-SCORE' | tool == 'GMMAT-WALD'){
     if(length(lineage)==0){
@@ -203,9 +203,9 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5
       }
       results <- list(GetResults(OUT_PATH_Lineage,suffix = 'glm.logistic.hybrid.gz',p_thresh=5e-8,n_cores=n_cores,is_interaction = F,is_ordinal = F,tool = tool))
       names(results) <- cur_lineage
-      all_res <- readRDS(glue::glue("{OUT_DIR}/results.rds"))
+      all_res <- readRDS(glue::glue("{OUT_DIR}/G2G_results.rds"))
       all_res <- c(all_res,results)
-      saveRDS(all_res,glue::glue("{OUT_DIR}/results.rds"))
+      saveRDS(all_res,glue::glue("{OUT_DIR}/G2G_results.rds"))
     }
   }
 }

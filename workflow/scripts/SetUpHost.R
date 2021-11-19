@@ -12,197 +12,197 @@ SetUpHost <- function(Genotyping_DIR,Pheno_DIR,VCF_Path,Out_Path,excl_regions,im
   }
   
   
-  ### SNP Filtering ###
-  if(imputed & !file.exists(glue::glue("{VCF_Path}.info"))){
-    #Write out info score
-    system(
-      glue::glue(
-        "{bcftools} query -f '%INFO/INFO\n' {VCF_Path} > {VCF_Path}.info"
-      )
-    )
-    #Write out MAF
-    system(
-      glue::glue(
-        "{bcftools} query -f '%INFO/RefPanelAF\n' {VCF_Path} > {VCF_Path}.AF"
-      )
-    )
-    if(X_Chr){
-      system(
-        glue::glue(
-          "{bcftools} query -f '%INFO/INFO\n' {X_VCF_Path} > {X_VCF_Path}.info"
-        )
-      )
-      system(
-        glue::glue(
-          "{bcftools} query -f '%INFO/RefPanelAF\n' {X_VCF_Path} > {X_VCF_Path}.AF"
-        )
-      )
-    }
-  }
-  
-  recode_vcf_path <- gsub(x=VCF_Path,pattern = '.vcf.gz',replacement = '.recode')
-  
-  if(!file.exists(paste0(recode_vcf_path,'.bim'))){
-    #Set missing ID
-    system(
-      glue::glue(
-        "plink2 --vcf {VCF_Path} --threads {n_cores} --keep-allele-order --make-bed --set-missing-var-ids @:#[b37]\\$r,\\$a --const-fid --out {recode_vcf_path}"
-      )
-    )
-    
-    if(X_Chr){
-      recode_vcf_path_X <- gsub(x=X_VCF_Path,pattern = '.vcf.gz',replacement = '.recode')
-      
-      system(
-        glue::glue(
-          "plink2 --vcf {X_VCF_Path} --threads {n_cores} --keep-allele-order --make-bed --set-missing-var-ids @:#[b37]\\$r,\\$a --const-fid --out {recode_vcf_path_X}.tmp"
-        )
-      )
-      system(
-        glue::glue(
-          "plink --bfile {recode_vcf_path_X}.tmp --threads {n_cores} --keep-allele-order --make-bed --impute-sex --out {recode_vcf_path_X}.tmp2"
-        )
-      )
-      # system(glue::glue("rm {recode_vcf_path_X}.tmp.*"))
-    }
-  }
-  #Calculate MAF
-  system(
-    glue::glue(
-      "plink2 --bfile {recode_vcf_path} --freq --threads {n_cores} --out {Out_Path}TB_DAR_Imputed"
-    )
-  )
-  
-  
-  #For X Chr, Split into Males and Females
-  if(X_Chr){
-    recode_vcf_path_X <- gsub(x=X_VCF_Path,pattern = '.vcf.gz',replacement = '.recode')
-    
-    X_fam_file <- data.table::fread(glue::glue('{recode_vcf_path_X}.tmp2.fam'))    
-    males <-  dplyr::filter(X_fam_file,V5 == 1)
-    females <-  dplyr::filter(X_fam_file,V5 == 2)
-    data.table::fwrite(males %>% dplyr::select(V1,V2),file = glue::glue('{recode_vcf_path_X}.males.txt'),col.names = F,row.names = F,quote = F,sep = ' ')
-    data.table::fwrite(females %>% dplyr::select(V1,V2),file = glue::glue('{recode_vcf_path_X}.females.txt'),col.names = F,row.names = F,quote = F,sep = ' ')
-    
-    system(
-      glue::glue(
-        "plink2 --bfile {recode_vcf_path_X}.tmp2 --threads {n_cores} --keep {recode_vcf_path_X}.males.txt --make-bed --out {recode_vcf_path_X}.males.tmp"
-      )
-    )
-    
-    system(
-      glue::glue(
-        "plink2 --bfile {recode_vcf_path_X}.tmp2 --threads {n_cores} --keep {recode_vcf_path_X}.females.txt --make-bed --out {recode_vcf_path_X}.females.tmp"
-      )
-    )
-    #MAF,missingness,and HWE filter for each sex (no HWE in males)
-    system(
-      glue::glue(
-        "plink2 --bfile {recode_vcf_path_X}.males.tmp --threads {n_cores} --maf {maf_thresh} --geno {missing} --make-bed --keep-allele-order --out {recode_vcf_path_X}.males.tmp2"
-      )
-    )
-    
-    system(
-      glue::glue(
-        "plink2 --bfile {recode_vcf_path_X}.females.tmp --threads {n_cores} --hwe {hwe_thresh} --maf {maf_thresh} --geno {missing} --make-bed --keep-allele-order --out {recode_vcf_path_X}.females.tmp2"
-      )
-    )
-    
-    male_variants <- data.table::fread(glue::glue("{recode_vcf_path_X}.males.tmp2.bim"))    
-    female_variants <- data.table::fread(glue::glue("{recode_vcf_path_X}.females.tmp2.bim"))    
-    consensus_variants <- intersect(male_variants$V2,female_variants$V2)
-    write(consensus_variants,glue::glue("{recode_vcf_path_X}.consensus"))
-    
-    system(
-      glue::glue(
-        "plink2 --bfile {recode_vcf_path_X}.males.tmp2 --threads {n_cores} --extract {recode_vcf_path_X}.consensus --make-bed --keep-allele-order --out {recode_vcf_path_X}.males"
-      )
-    )
-    system(
-      glue::glue(
-        "plink2 --bfile {recode_vcf_path_X}.females.tmp2 --threads {n_cores} --extract {recode_vcf_path_X}.consensus --make-bed --keep-allele-order --out {recode_vcf_path_X}.females"
-      )
-    )
-    
-    system(
-      glue::glue(
-        "plink --bfile {recode_vcf_path_X}.males --bmerge {recode_vcf_path_X}.females --threads {n_cores} --indiv-sort f {recode_vcf_path}.fam --make-bed --keep-allele-order --out {recode_vcf_path_X}"
-      )
-    )
-    # system(glue::glue("rm {recode_vcf_path_X}.*tmp*"))
-    
-  }
-  
-  
-  #Write out snps to excl
-  if(imputed){
-    tmp_bim_file <- data.table::fread(glue::glue("{recode_vcf_path}.bim"))
-    info_file_header <- data.table::fread(glue::glue("{VCF_Path}.info"),nrows = 1)
-    if('Rsq' %in% colnames(info_file_header)){
-      info_file <- data.table::fread(glue::glue("{VCF_Path}.info"),select = 'Rsq')
-      snps_to_excl <- tmp_bim_file$V2[which(info_file$Rsq < 0.8)]
-    }else{
-      info_file <- data.table::fread(glue::glue("{VCF_Path}.info"))
-      snps_to_excl <- tmp_bim_file$V2[which(info_file$V1 < 0.8)]
-    }
-    write(snps_to_excl,file = glue::glue("{Out_Path}to_excl.txt"))
-    system(
-      glue::glue(
-        "plink2 --bfile {recode_vcf_path} --threads {n_cores} --exclude {Out_Path}to_excl.txt --make-bed --keep-allele-order --out {Out_Path}TB_DAR_Imputed_info_filt"
-      )
-    )
-    #Cleanup
-    system(glue::glue('rm {Out_Path}to_excl.txt'))
-    
-    if(X_Chr){
-      tmp_bim_file <- data.table::fread(glue::glue("{recode_vcf_path_X}.bim"))
-      info_file_header <- data.table::fread(glue::glue("{X_VCF_Path}.info"),nrows = 1)
-      if('Rsq' %in% colnames(info_file_header)){
-        info_file <- data.table::fread(glue::glue("{X_VCF_Path}.info"),select = 'Rsq')
-        snps_to_excl <- tmp_bim_file$V2[which(info_file$Rsq < 0.8)]
-      }else{
-        info_file <- data.table::fread(glue::glue("{X_VCF_Path}.info"))
-        snps_to_excl <- tmp_bim_file$V2[which(info_file$V1 < 0.8)]
-      }
-      write(snps_to_excl,file = glue::glue("{Out_Path}to_excl_X.txt"))
-      system(
-        glue::glue(
-          "plink2 --bfile {recode_vcf_path_X} --threads {n_cores} --exclude {Out_Path}to_excl_X.txt --make-bed --keep-allele-order --out {Out_Path}TB_DAR_Imputed_chrX_info_maf_filt"
-        )
-      )
-      #Cleanup
-      system(glue::glue('rm {Out_Path}to_excl_X.txt'))
-      # system(glue::glue('rm {Out_Path}*males*'))
-      
-    }
-    
-    
-  }else{
-    system(
-      glue::glue(
-        "plink2 --bfile {recode_vcf_path} --threads {n_cores} --make-bed --keep-allele-order --out {Out_Path}TB_DAR_Imputed_info_filt"
-      )
-    )
-  }
-  
-  #MAF and HWE filter on Imputed file
-  system(
-    glue::glue(
-      "plink2 --bfile {Out_Path}TB_DAR_Imputed_info_filt --threads {n_cores} --hwe {hwe_thresh} --maf {maf_thresh} --make-bed --keep-allele-order --out {Out_Path}TB_DAR_Imputed_info_maf_filt"
-    )
-  )
-  
-  #### Kingship ####
-  system(
-    glue::glue(
-      "plink --bfile {Out_Path}TB_DAR_Imputed_info_maf_filt --threads {n_cores} --make-bed --out {Out_Path}tmp"
-    )
-  )
-  fam_file <- data.table::fread(glue::glue("{Out_Path}tmp.fam"))
-  fam_file$V1 <- fam_file$V2
-  data.table::fwrite(fam_file,sep = ' ',quote = F,col.names = F,row.names = F,file = glue::glue("{Out_Path}tmp.fam"))
-  
-  system(glue::glue("{KING} --related --degree {king_degree} -b {Out_Path}tmp.bed --prefix {Out_Path}king.related"))
+  # ### SNP Filtering ###
+  # if(imputed & !file.exists(glue::glue("{VCF_Path}.info"))){
+  #   #Write out info score
+  #   system(
+  #     glue::glue(
+  #       "{bcftools} query -f '%INFO/INFO\n' {VCF_Path} > {VCF_Path}.info"
+  #     )
+  #   )
+  #   #Write out MAF
+  #   system(
+  #     glue::glue(
+  #       "{bcftools} query -f '%INFO/RefPanelAF\n' {VCF_Path} > {VCF_Path}.AF"
+  #     )
+  #   )
+  #   if(X_Chr){
+  #     system(
+  #       glue::glue(
+  #         "{bcftools} query -f '%INFO/INFO\n' {X_VCF_Path} > {X_VCF_Path}.info"
+  #       )
+  #     )
+  #     system(
+  #       glue::glue(
+  #         "{bcftools} query -f '%INFO/RefPanelAF\n' {X_VCF_Path} > {X_VCF_Path}.AF"
+  #       )
+  #     )
+  #   }
+  # }
+  # 
+  # recode_vcf_path <- gsub(x=VCF_Path,pattern = '.vcf.gz',replacement = '.recode')
+  # 
+  # if(!file.exists(paste0(recode_vcf_path,'.bim'))){
+  #   #Set missing ID
+  #   system(
+  #     glue::glue(
+  #       "plink2 --vcf {VCF_Path} --threads {n_cores} --keep-allele-order --make-bed --set-missing-var-ids @:#[b37]\\$r,\\$a --const-fid --out {recode_vcf_path}"
+  #     )
+  #   )
+  #   
+  #   if(X_Chr){
+  #     recode_vcf_path_X <- gsub(x=X_VCF_Path,pattern = '.vcf.gz',replacement = '.recode')
+  #     
+  #     system(
+  #       glue::glue(
+  #         "plink2 --vcf {X_VCF_Path} --threads {n_cores} --keep-allele-order --make-bed --set-missing-var-ids @:#[b37]\\$r,\\$a --const-fid --out {recode_vcf_path_X}.tmp"
+  #       )
+  #     )
+  #     system(
+  #       glue::glue(
+  #         "plink --bfile {recode_vcf_path_X}.tmp --threads {n_cores} --keep-allele-order --make-bed --impute-sex --out {recode_vcf_path_X}.tmp2"
+  #       )
+  #     )
+  #     # system(glue::glue("rm {recode_vcf_path_X}.tmp.*"))
+  #   }
+  # }
+  # #Calculate MAF
+  # system(
+  #   glue::glue(
+  #     "plink2 --bfile {recode_vcf_path} --freq --threads {n_cores} --out {Out_Path}TB_DAR_Imputed"
+  #   )
+  # )
+  # 
+  # 
+  # #For X Chr, Split into Males and Females
+  # if(X_Chr){
+  #   recode_vcf_path_X <- gsub(x=X_VCF_Path,pattern = '.vcf.gz',replacement = '.recode')
+  #   
+  #   X_fam_file <- data.table::fread(glue::glue('{recode_vcf_path_X}.tmp2.fam'))    
+  #   males <-  dplyr::filter(X_fam_file,V5 == 1)
+  #   females <-  dplyr::filter(X_fam_file,V5 == 2)
+  #   data.table::fwrite(males %>% dplyr::select(V1,V2),file = glue::glue('{recode_vcf_path_X}.males.txt'),col.names = F,row.names = F,quote = F,sep = ' ')
+  #   data.table::fwrite(females %>% dplyr::select(V1,V2),file = glue::glue('{recode_vcf_path_X}.females.txt'),col.names = F,row.names = F,quote = F,sep = ' ')
+  #   
+  #   system(
+  #     glue::glue(
+  #       "plink2 --bfile {recode_vcf_path_X}.tmp2 --threads {n_cores} --keep {recode_vcf_path_X}.males.txt --make-bed --out {recode_vcf_path_X}.males.tmp"
+  #     )
+  #   )
+  #   
+  #   system(
+  #     glue::glue(
+  #       "plink2 --bfile {recode_vcf_path_X}.tmp2 --threads {n_cores} --keep {recode_vcf_path_X}.females.txt --make-bed --out {recode_vcf_path_X}.females.tmp"
+  #     )
+  #   )
+  #   #MAF,missingness,and HWE filter for each sex (no HWE in males)
+  #   system(
+  #     glue::glue(
+  #       "plink2 --bfile {recode_vcf_path_X}.males.tmp --threads {n_cores} --maf {maf_thresh} --geno {missing} --make-bed --keep-allele-order --out {recode_vcf_path_X}.males.tmp2"
+  #     )
+  #   )
+  #   
+  #   system(
+  #     glue::glue(
+  #       "plink2 --bfile {recode_vcf_path_X}.females.tmp --threads {n_cores} --hwe {hwe_thresh} --maf {maf_thresh} --geno {missing} --make-bed --keep-allele-order --out {recode_vcf_path_X}.females.tmp2"
+  #     )
+  #   )
+  #   
+  #   male_variants <- data.table::fread(glue::glue("{recode_vcf_path_X}.males.tmp2.bim"))    
+  #   female_variants <- data.table::fread(glue::glue("{recode_vcf_path_X}.females.tmp2.bim"))    
+  #   consensus_variants <- intersect(male_variants$V2,female_variants$V2)
+  #   write(consensus_variants,glue::glue("{recode_vcf_path_X}.consensus"))
+  #   
+  #   system(
+  #     glue::glue(
+  #       "plink2 --bfile {recode_vcf_path_X}.males.tmp2 --threads {n_cores} --extract {recode_vcf_path_X}.consensus --make-bed --keep-allele-order --out {recode_vcf_path_X}.males"
+  #     )
+  #   )
+  #   system(
+  #     glue::glue(
+  #       "plink2 --bfile {recode_vcf_path_X}.females.tmp2 --threads {n_cores} --extract {recode_vcf_path_X}.consensus --make-bed --keep-allele-order --out {recode_vcf_path_X}.females"
+  #     )
+  #   )
+  #   
+  #   system(
+  #     glue::glue(
+  #       "plink --bfile {recode_vcf_path_X}.males --bmerge {recode_vcf_path_X}.females --threads {n_cores} --indiv-sort f {recode_vcf_path}.fam --make-bed --keep-allele-order --out {recode_vcf_path_X}"
+  #     )
+  #   )
+  #   # system(glue::glue("rm {recode_vcf_path_X}.*tmp*"))
+  #   
+  # }
+  # 
+  # 
+  # #Write out snps to excl
+  # if(imputed){
+  #   tmp_bim_file <- data.table::fread(glue::glue("{recode_vcf_path}.bim"))
+  #   info_file_header <- data.table::fread(glue::glue("{VCF_Path}.info"),nrows = 1)
+  #   if('Rsq' %in% colnames(info_file_header)){
+  #     info_file <- data.table::fread(glue::glue("{VCF_Path}.info"),select = 'Rsq')
+  #     snps_to_excl <- tmp_bim_file$V2[which(info_file$Rsq < 0.8)]
+  #   }else{
+  #     info_file <- data.table::fread(glue::glue("{VCF_Path}.info"))
+  #     snps_to_excl <- tmp_bim_file$V2[which(info_file$V1 < 0.8)]
+  #   }
+  #   write(snps_to_excl,file = glue::glue("{Out_Path}to_excl.txt"))
+  #   system(
+  #     glue::glue(
+  #       "plink2 --bfile {recode_vcf_path} --threads {n_cores} --exclude {Out_Path}to_excl.txt --make-bed --keep-allele-order --out {Out_Path}TB_DAR_Imputed_info_filt"
+  #     )
+  #   )
+  #   #Cleanup
+  #   system(glue::glue('rm {Out_Path}to_excl.txt'))
+  #   
+  #   if(X_Chr){
+  #     tmp_bim_file <- data.table::fread(glue::glue("{recode_vcf_path_X}.bim"))
+  #     info_file_header <- data.table::fread(glue::glue("{X_VCF_Path}.info"),nrows = 1)
+  #     if('Rsq' %in% colnames(info_file_header)){
+  #       info_file <- data.table::fread(glue::glue("{X_VCF_Path}.info"),select = 'Rsq')
+  #       snps_to_excl <- tmp_bim_file$V2[which(info_file$Rsq < 0.8)]
+  #     }else{
+  #       info_file <- data.table::fread(glue::glue("{X_VCF_Path}.info"))
+  #       snps_to_excl <- tmp_bim_file$V2[which(info_file$V1 < 0.8)]
+  #     }
+  #     write(snps_to_excl,file = glue::glue("{Out_Path}to_excl_X.txt"))
+  #     system(
+  #       glue::glue(
+  #         "plink2 --bfile {recode_vcf_path_X} --threads {n_cores} --exclude {Out_Path}to_excl_X.txt --make-bed --keep-allele-order --out {Out_Path}TB_DAR_Imputed_chrX_info_maf_filt"
+  #       )
+  #     )
+  #     #Cleanup
+  #     system(glue::glue('rm {Out_Path}to_excl_X.txt'))
+  #     # system(glue::glue('rm {Out_Path}*males*'))
+  #     
+  #   }
+  #   
+  #   
+  # }else{
+  #   system(
+  #     glue::glue(
+  #       "plink2 --bfile {recode_vcf_path} --threads {n_cores} --make-bed --keep-allele-order --out {Out_Path}TB_DAR_Imputed_info_filt"
+  #     )
+  #   )
+  # }
+  # 
+  # #MAF and HWE filter on Imputed file
+  # system(
+  #   glue::glue(
+  #     "plink2 --bfile {Out_Path}TB_DAR_Imputed_info_filt --threads {n_cores} --hwe {hwe_thresh} --maf {maf_thresh} --make-bed --keep-allele-order --out {Out_Path}TB_DAR_Imputed_info_maf_filt"
+  #   )
+  # )
+  # 
+  # #### Kingship ####
+  # system(
+  #   glue::glue(
+  #     "plink --bfile {Out_Path}TB_DAR_Imputed_info_maf_filt --threads {n_cores} --make-bed --out {Out_Path}tmp"
+  #   )
+  # )
+  # fam_file <- data.table::fread(glue::glue("{Out_Path}tmp.fam"))
+  # fam_file$V1 <- fam_file$V2
+  # data.table::fwrite(fam_file,sep = ' ',quote = F,col.names = F,row.names = F,file = glue::glue("{Out_Path}tmp.fam"))
+  # 
+  # system(glue::glue("{KING} --related --degree {king_degree} -b {Out_Path}tmp.bed --prefix {Out_Path}king.related"))
   
   ### Set-up Phenotype ###
   if(SetUpPheno){
@@ -300,6 +300,43 @@ SetUpHost <- function(Genotyping_DIR,Pheno_DIR,VCF_Path,Out_Path,excl_regions,im
   
   #PCA outliers to remove (WARNING: Checked manually beforehand on which PC1 cutoff to use)
   source('./scripts/Run_PCA.R')
+  #Prepare 1KG sample table
+  PCA_Out_Path <- paste0(Out_Path,'PCA')
+
+  RunPCA1KG(VCF_Path,PCA_Out_Path)
+  
+  super_pop <- data.table::fread('~/G2G_TB/data/1000_Genomes/20131219.populations.tsv')
+  tbl_1KG <- data.table::fread('~/G2G_TB/data/1000_Genomes/20130606_g1k.ped') %>% dplyr::left_join(super_pop,by = c('Population' = 'Population Code'))
+  
+  #Load PCA results
+  pc_df <- data.table::fread(glue::glue("{PCA_Out_Path}_1KG_TBDAR_consensus_pruned.eigenvec"))
+  colnames(pc_df) <- c('FID','IID',paste0('PC',seq(1,ncol(pc_df) - 2)))
+  #Remove ID Prefix
+  pc_df$IID <- sapply(pc_df$IID,function(x) ifelse(grepl(pattern='_',x=x),strsplit(x=x,split = '_')[[1]][2],x))
+  #Plot with all Superpopulations
+  merged_df <- pc_df %>%
+    dplyr::left_join(tbl_1KG,c('IID'='Individual ID'))
+  merged_df$`Data Set` <- as.factor(ifelse(is.na(merged_df$Population),'TB DAR','1000 Genomes'))
+  merged_df$`Super Population` <- as.factor(as.character(merged_df$`Super Population`))
+  merged_df$`Super Population` <-factor(merged_df$`Super Population` ,
+                                        levels = rev(levels(merged_df$`Super Population`)))
+  
+  eigen_val <- as.vector(data.table::fread(glue::glue("{PCA_Out_Path}_1KG_TBDAR_consensus_pruned.eigenval")))
+  var_explained <- eigen_val$V1 / sum(eigen_val$V1) * 100
+  merged_df$simple_ID <- sapply(merged_df$IID,function(x) ifelse(grepl(x=x,pattern = '-'),strsplit(x=x,split = '-')[[1]][1],x))
+  pc_plot_thousand_genome_PC1_PC2 <- ggplot(data = merged_df) +
+    aes(x=PC1,y=PC2,color=`Super Population`,shape=`Data Set`) +
+    geom_point() + scale_shape_manual(values = c(20,4)) +
+    xlab(paste0('PC1 (',signif(var_explained[1],2),'%)'))  +
+    ylab(paste0('PC2 (',signif(var_explained[2],2),'%)')) +
+    geom_text_repel(data= dplyr::filter(merged_df,`Data Set` == 'TB DAR' & PC1 < 0),aes(label=simple_ID))
+  pc_plot_thousand_genome_PC3_PC4 <- ggplot(data = merged_df) +
+    aes(x=PC3,y=PC4,color=`Super Population`,shape=`Data Set`) +
+    geom_point() + scale_shape_manual(values = c(20,4)) +
+    xlab(paste0('PC3 (',signif(var_explained[3],2),'%)'))  +
+    ylab(paste0('PC4 (',signif(var_explained[4],2),'%)')) #+
+  pc_plot_thousand_genome <- ggpubr::ggarrange(plotlist = list(pc_plot_thousand_genome_PC1_PC2,pc_plot_thousand_genome_PC3_PC4),ncol = 2)
+  
   tb_dar_PCA <- dplyr::filter(merged_df,`Data Set` == 'TB DAR')
   pca_to_excl <- dplyr::filter(tb_dar_PCA,PC1 < 0)$IID
   
