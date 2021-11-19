@@ -6,12 +6,13 @@ HLA_Data: '../data/HLA/FourDigits/'
 SCRATCH_DIR: '../scratch/'
 RESULTS_DIR: '../results/'
 host_vcf: '../data/Genotyping/TB_DAR_AFGR_Tanz_Imputed_ChrX/AFGR_Tanz.imputed.vcf.gz'
+PASCAL_path: '/home/zmxu/Software/PASCAL/'
 
 #Pathogen Variant Type Settings
 SIFT: 'False'
 Burden: 'False'
 Deletion: 'True'
-Analysis_Type: 'G2G' #or interaction
+Analysis_Type: 'G2G' #tbscore or xrayscore
 Homo_Only: 'True'
 tool: 'PLINK'
 
