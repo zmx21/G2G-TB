@@ -1,0 +1,16 @@
+name: Host_Processing
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.1.2
+  - r-glue=1.4.2
+  - r-data.table=1.14.2
+  - plink2=2.00a2.3
+  - r-pbmcapply=1.5.0
+  - r-dplyr=1.0.8
+  - r-stringr=1.4.0
+  - pigz=2.6
+
+
+

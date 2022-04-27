@@ -1,10 +1,7 @@
 library(pbmcapply)
 library(dplyr)
-library(parallel)
-library(mltools)
 library(data.table)
-library(ggplot2)
-library(ggrepel)
+library(glue)
 library(stringr)
 
 GetResults <- function(OUT_DIR,suffix = 'glm.logistic.hybrid',p_thresh=5e-8,n_cores=5,is_interaction = F,is_ordinal = F,tool = 'PLINK'){
@@ -29,29 +26,31 @@ GetResults <- function(OUT_DIR,suffix = 'glm.logistic.hybrid',p_thresh=5e-8,n_co
   return(results)
 }
 
-RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5,n_pPC = 6,n_cores = 20,covars_to_incl = c(),
-                   lineage = c(),debug=F,chr = c(),test_snp = c(),model = NA,X_Chr=F,var_type = 'both'){
+RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = 'PLINK',n_PC = 5,n_pPC = 6,n_cores = 20,covars_to_incl = c(),
+                   lineage = c(),stratified = T,debug=F,chr = c(),test_snp = c(),model = NA,var_type = 'both'){
   system(glue::glue("mkdir -p {OUT_DIR}"))
-  GCTA = '/home/zmxu/Software/gcta'
-  PLINK = '/home/zmxu/Software/plink'
-  bcftools = '/home/zmxu/Software/bcftools'
-  regenie = '/home/zmxu/Software/regenie_v2.0.1.gz_x86_64_Linux'
   OUT_DIR <- glue::glue("{OUT_DIR}/{tool}/")
   system(glue::glue("mkdir -p {OUT_DIR}"))
-  if(length(covars_to_incl) > 0){
-    OUT_DIR <- glue::glue("{OUT_DIR}/PC_{n_PC}_pPC_{n_pPC}_cov_{paste0(sapply(covars_to_incl,function(x) gsub(x=x,pattern='_',replacement='')),collapse = '-')}/")
-  }else{
-    OUT_DIR <- glue::glue("{OUT_DIR}/PC_{n_PC}_pPC_{n_pPC}/")
-  }
+  OUT_DIR <- glue::glue("{OUT_DIR}/PC_{n_PC}_pPC_{n_pPC}/")
+  system(glue::glue("mkdir -p {OUT_DIR}"))
+  # if(length(covars_to_incl) > 0){
+  #   OUT_DIR <- glue::glue("{OUT_DIR}/PC_{n_PC}_pPC_{n_pPC}_cov_{paste0(sapply(covars_to_incl,function(x) gsub(x=x,pattern='_',replacement='')),collapse = '-')}/")
+  # }else{
+  #   OUT_DIR <- glue::glue("{OUT_DIR}/PC_{n_PC}_pPC_{n_pPC}/")
+  # }
+  OUT_DIR <- glue::glue("{OUT_DIR}/Stratified_{str_to_title(as.character(stratified))}/")
   system(glue::glue("mkdir -p {OUT_DIR}"))
   
+  #Initialize results object
   saveRDS(list(),glue::glue("{OUT_DIR}/G2G_results.rds"))
   
   if (tool == 'PLINK' | tool == 'PLINK-FIRTH' | tool == 'HLA-PLINK' | tool == 'SAIGE' | tool == 'GMMAT-SCORE' | tool == 'GMMAT-WALD'){
-    if(length(lineage)==0){
+    if(length(lineage)==0 & stratified){
       lineages_to_run <- unique(names(G2G_Obj$aa_matrix_filt))
-    }else{
+    }else if(length(lineage) > 0 & stratified){
       lineages_to_run <- lineage
+    }else if(!stratified){
+      lineages_to_run <- 'ALL'
     }
     for(i in 1:length(lineages_to_run)){
       cur_lineage <- lineages_to_run[i]
@@ -67,8 +66,12 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5
       }
       
       #Extract AA matrix for current lineage
-      cur_aa_matrix_filt <- G2G_Obj$aa_matrix_filt[[cur_lineage]]
-      
+      if(stratified){
+        cur_aa_matrix_filt <- G2G_Obj$aa_matrix_filt[[cur_lineage]]
+      }else{
+        cur_aa_matrix_filt <- G2G_Obj$aa_matrix_full
+      }
+
       #Extract/convert dosage
       #Var_Type = Both, treat homo and hetero calls as present
       #Var_Type = Homo, treat homo calls as present, hetero calls as absent
@@ -86,8 +89,6 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5
       colnames(cur_aa_Matrix_mat) <- c('FID','IID',colnames(cur_aa_matrix_filt))
       
       data.table::fwrite(cur_aa_Matrix_mat,col.names = T,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/AA_outcome.txt"),na = 'NA',quote = F)
-      
-      
       
       #Store PCs and covars
       host_PCs <- G2G_Obj$host_PCs[[cur_lineage]]
@@ -107,15 +108,17 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5
       if(length(cur_covars_to_incl) > 0){
         covars_num_discrete <- G2G_Obj$covars[[cur_lineage]]
         #Add lineage as covariate if more than one lineage in current group
-        if('LINEAGE' %in% cur_covars_to_incl & (nrow(str_locate_all(pattern = 'L',cur_lineage)[[1]]) > 1 | cur_lineage == 'ALL')){
-          lineage_df <- G2G_Obj$both_IDs_to_keep[[cur_lineage]] %>% dplyr::select(IID=FAM_ID,LINEAGE)
-          lineage_df$LINEAGE <- as.factor(lineage_df$LINEAGE)
-          lineage_df <- one_hot(as.data.table(lineage_df),cols = 'LINEAGE')
-          lineage_df <- lineage_df %>% dplyr::select(-colnames(lineage_df)[ncol(lineage_df)])
-          
-          covars_num_discrete <- covars_num_discrete %>% dplyr::left_join(lineage_df)
+        if(stratified){
+          if('LINEAGE' %in% cur_covars_to_incl & (nrow(str_locate_all(pattern = 'L',cur_lineage)[[1]]) > 1 | cur_lineage == 'ALL')){
+            lineage_df <- G2G_Obj$both_IDs_to_keep[[cur_lineage]] %>% dplyr::select(IID=FAM_ID,LINEAGE)
+            lineage_df$LINEAGE <- as.factor(lineage_df$LINEAGE)
+            lineage_df <- one_hot(as.data.table(lineage_df),cols = 'LINEAGE')
+            lineage_df <- lineage_df %>% dplyr::select(-colnames(lineage_df)[ncol(lineage_df)])
+            
+            covars_num_discrete <- covars_num_discrete %>% dplyr::left_join(lineage_df)
+          }
         }
-        
+
         covars_num_discrete <- dplyr::select(covars_num_discrete,'IID',contains(cur_covars_to_incl))
         covars_num_discrete[is.na(covars_num_discrete)] <- 'NONE'
         
@@ -135,8 +138,8 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5
           covars <- dplyr::left_join(fam_file %>% dplyr::select(FID,IID),host_PCs,by=c('IID'='IID')) %>% dplyr::relocate(FID,IID)
         }
       }
-      
-      data.table::fwrite(covars,col.names = F,row.names = F,sep = ' ',file = glue::glue("{OUT_PATH_Lineage}/tmp/plink-covars.txt"),na = 'NA',quote = F)
+      covars[covars==''] <- NA
+      data.table::fwrite(covars,col.names = F,row.names = F,sep = '\t',file = glue::glue("{OUT_PATH_Lineage}/tmp/plink-covars.txt"),na = 'NA',quote = F)
       
       #Run association study for each AA variant in the current lineage
       AA_Matrix_No_ID <- cur_aa_Matrix_mat[,-c(1,2)]
@@ -150,31 +153,21 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5
         cur_pathogen_variant <- colnames(AA_Matrix_No_ID)[k]
         if(tool == 'PLINK'){
           if(is.na(model)){
-            if(X_Chr){
               tryCatch(system(
                 glue::glue(
-                  "{PLINK}2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --glm cc-residualize hide-covar --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
+                  "plink2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm cc-residualize hide-covar --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
                 )
               ))
-              
-            }else{
-              tryCatch(system(
-                glue::glue(
-                  "{PLINK}2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm cc-residualize hide-covar --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
-                )
-              ))
-              
-            }
-            
-            system(glue::glue('pigz --fast {OUT_PATH_Lineage}{cur_pathogen_variant}*.hybrid'))
           }else{
             tryCatch(system(
               glue::glue(
-                "{PLINK}2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm {model} cc-residualize hide-covar --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}.{model}"
+                "plink2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm {model} cc-residualize hide-covar --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}.{model}"
               )
             ))
             
           }
+          system(glue::glue('pigz --fast {OUT_PATH_Lineage}{cur_pathogen_variant}*.hybrid'))
+          
         }else if(tool == 'HLA-PLINK'){
           Alleles_Path <- gsub(x=G2G_Obj$host_path[cur_lineage],pattern = 'Imputed',replacement = 'HLA_Alleles')
           AA_Path <- gsub(x=G2G_Obj$host_path[cur_lineage],pattern = 'Imputed',replacement = 'HLA_AA')
@@ -183,20 +176,20 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5
           
           tryCatch(system(
             glue::glue(
-              "{PLINK}2 --threads {n_cores} --bfile {Alleles_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_Allele/{cur_pathogen_variant}"
+              "plink2 --threads {n_cores} --bfile {Alleles_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_Allele/{cur_pathogen_variant}"
             )
           ))
           
           tryCatch(system(
             glue::glue(
-              "{PLINK}2 --threads {n_cores} --bfile {AA_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_AA/{cur_pathogen_variant}"
+              "plink2 --threads {n_cores} --bfile {AA_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_AA/{cur_pathogen_variant}"
             )
           ))
         }
         else if(tool == 'PLINK-FIRTH'){
           tryCatch(system(
             glue::glue(
-              "{PLINK}2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm firth hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
+              "plink2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm firth hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
             )
           ))
         }
@@ -210,26 +203,36 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,Ref_Panel,tool = 'GCTA',n_PC = 5
   }
 }
 
-SOFTWARE_DIR <- '../software/'
-
-args <- commandArgs(trailingOnly = TRUE) 
+args <- commandArgs(trailingOnly = TRUE)
 G2G_Obj <- readRDS(args[[1]])
 OUT_DIR <- args[[2]]
-Ref_Panel <- args[[3]]
-tool <- args[[4]]
-n_PC <- as.numeric(args[[5]])
-n_pPC <- as.numeric(args[[6]])
-covars_to_incl <- args[[7]]
+tool <- args[[3]]
+n_PC <- as.numeric(args[[4]])
+n_pPC <- as.numeric(args[[5]])
+covars_to_incl <- args[[6]]
 if(covars_to_incl == 'NA'){
   covars_to_incl <- c()
 }else{
   covars_to_incl <- strsplit(covars_to_incl,split = ',')[[1]]
 }
-X_Chr <- as.logical(args[[8]])
+stratified <- as.logical(args[[7]])
+homo_only <- as.logical(args[[8]])
 n_cores <- as.numeric(args[[9]])
 
-system(glue::glue('mkdir -p {OUT_DIR}'))
+# G2G_Obj <- readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True/G2G_Obj.rds')
+# OUT_DIR <- '../results/Burden_False_SIFT_False_Del_True_HomoOnly_True/'
+# tool <- 'PLINK'
+# n_PC <- 3
+# n_pPC <- 0
+# covars_to_incl <- c('patient_sex')
+# if(covars_to_incl == 'NA'){
+#   covars_to_incl <- c()
+# }else{
+#   covars_to_incl <- strsplit(covars_to_incl,split = ',')[[1]]
+# }
+# stratified <- F
+# homo_only <- T
+# n_cores <- 10
 
-RunG2G(G2G_Obj,SOFTWARE_DIR,OUT_DIR,
-       Ref_Panel = Ref_Panel,tool = tool,n_cores = n_cores,n_PC = n_PC,n_pPC = n_pPC,debug = F,covars_to_incl = covars_to_incl,
-       model = NA,X_Chr = X_Chr,var_type = 'both')
+RunG2G(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = tool,n_cores = n_cores,n_PC = n_PC,n_pPC = n_pPC,debug = F,covars_to_incl = covars_to_incl,
+       model = NA,stratified = stratified,var_type = ifelse(homo_only,'homo','both'))

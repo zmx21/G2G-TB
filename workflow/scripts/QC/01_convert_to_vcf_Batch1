@@ -1,0 +1,35 @@
+#!/bin/bash
+DIR='../Batch1/Batch1_PLINK_Top/'
+INPUT='Batch1_PLINK_Top'
+REF_Genome="../ref_genome/human_g1k_v37.fasta"
+#Collapse Sample Names
+sed 's/ /-/g' $DIR$INPUT".ped" > $DIR$INPUT"_Parsed.ped"
+cp $DIR$INPUT".map" $DIR$INPUT"_Parsed.map"
+#DIR to store bed files
+mkdir -p $DIR"BED"
+#Convert to bed file, keep allele order. Keep only SNPs. 
+~/Software/plink --threads 20 --file $DIR$INPUT"_Parsed" --keep-allele-order --snps-only just-acgt --make-bed --out $DIR"BED/"$INPUT
+#Change SNP Table
+sed 's/MINUS/M/g' $DIR"../Fellay_Plates1to12_QCed/SNP_Table.txt" | sed 's/PLUS/P/g' > $DIR"SNP_Table_Reformat.txt"
+#Fill in missing ALT alleles for non-polymorphic SNPs
+~/Software/GenGen-1.0.1/convert_bim_allele.pl $DIR"BED/"$INPUT".bim" $DIR"SNP_Table_Reformat.txt" --intype top --outtype ilmnab --replacezero > $DIR"tmp1.bim"
+~/Software/GenGen-1.0.1/convert_bim_allele.pl $DIR"tmp1.bim" $DIR"SNP_Table_Reformat.txt" --intype ilmnab --outtype top --replacezero > $DIR"BED/"$INPUT".bim"
+rm $DIR"tmp1.bim"
+rm $DIR"SNP_Table_Reformat.txt"
+#DIR to store VCF files
+mkdir -p $DIR"VCF"
+~/Software/plink --bfile $DIR"BED/"$INPUT --keep-allele-order --snps-only just-acgt --export vcf --out $DIR"VCF/tmp1"
+#Rename X chr
+printf '%s\n' '23 X' '25 X' > $DIR"VCF/chr_names.txt"
+~/Software/bcftools annotate --rename-chrs $DIR"VCF/chr_names.txt" $DIR"VCF/tmp1.vcf" | ~/Software/bcftools sort -O z -o $DIR"VCF/tmp2.vcf.gz"
+~/Software/bcftools index -t $DIR"VCF/tmp2.vcf.gz"
+~/Software/bcftools +fixref $DIR"VCF/tmp2.vcf.gz" -Ob -- -f $REF_Genome -m top | bcftools view -O z -o $DIR"VCF/"$INPUT".GRCh37.vcf.gz"
+rm $DIR"VCF/tmp1.vcf"
+rm $DIR"VCF/tmp2.vcf.gz"
+rm $DIR"VCF/tmp2.vcf.gz.tbi"
+rm $DIR$INPUT"_Parsed.map"
+rm $DIR$INPUT"_Parsed.ped"
+rm -r $DIR"BED/"
+#Check af distribution
+~/Software/bcftools index -t $DIR"VCF/"$INPUT".GRCh37.vcf.gz" 
+~/Software/bcftools annotate -c INFO/AF -a ../ref_genome/af.vcf.gz $DIR"VCF/"$INPUT".GRCh37.vcf.gz" | bcftools +af-dist | grep ^PROB > $DIR"data.dist.txt"

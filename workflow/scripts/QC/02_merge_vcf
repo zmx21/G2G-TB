@@ -1,0 +1,18 @@
+BATCH1=$1
+BATCH2=$2
+
+~/Software/bcftools query -l $BATCH1 | awk -F '_' '{print "Batch1_"$2}' | awk -F '-' '{print$1}' > $BATCH1".header"
+~/Software/bcftools reheader -s $BATCH1".header" -o $BATCH1".rehead.vcf.gz" $BATCH1
+~/Software/bcftools index $BATCH1".rehead.vcf.gz"
+
+~/Software/bcftools query -l $BATCH2 | awk -F '_' '{print "Batch2_"$2}' | sed 's/TZ-//' | awk -F '-' '{print $1}' > $BATCH2".header"
+~/Software/bcftools reheader -s $BATCH2".header" -o $BATCH2".rehead.vcf.gz" $BATCH2
+~/Software/bcftools index $BATCH2".rehead.vcf.gz"
+
+~/Software/bcftools merge -m none -o ../Raw_Merged/TBDAR.Genotyped.Merged.vcf.gz -O z $BATCH1".rehead.vcf.gz" $BATCH2".rehead.vcf.gz"
+~/Software/bcftools index -t ../Raw_Merged/TBDAR.Genotyped.Merged.vcf.gz
+
+rm $BATCH1.rehead.vcf.gz*
+rm $BATCH1".header"
+rm $BATCH2.rehead.vcf.gz*
+rm $BATCH2".header"

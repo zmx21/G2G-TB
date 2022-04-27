@@ -1,7 +1,7 @@
 library(ape)
-library(pbmcapply)
+library(parallel)
 GetGeneCoverage <- function(VCF_Files,ref_annot,n_cores){
-  mclapply(1:length(VCF_Files),function(i){
+  pbmclapply(1:length(VCF_Files),function(i){
     cur_vcf <- VCF_Files[i]
     cur_out <- gsub(x=cur_vcf,pattern = '.vcf.gz','.coverage')
     system(glue::glue("bcftools query -f '%POS [ %SDP]\n' {cur_vcf} > {cur_out}"))
@@ -23,7 +23,7 @@ GetGeneCoverage <- function(VCF_Files,ref_annot,n_cores){
     cur_out <- gsub(x=cur_vcf,pattern = '.vcf.gz','.coverage')
     
     cur_coverage <- data.table::fread(cur_out)
-    gene_cov <- unlist(mclapply(1:nrow(gene_df),function(k) {
+    gene_cov <- unlist(pbmclapply(1:nrow(gene_df),function(k) {
       start <- gene_df$start[k]
       end = gene_df$end[k]
       return(mean(cur_coverage$V2[cur_coverage$V1 >= start & cur_coverage$V1 <= end]))

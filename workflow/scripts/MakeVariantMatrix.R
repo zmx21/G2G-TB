@@ -43,7 +43,7 @@ AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_
   missing_matrix <- missing_matrix[,all_sample_ids]
   
   #Get all non-syn variants for each Mtb sample
-  all_variants <- mclapply(AA_Tbl_Files,function(x){
+  all_variants <- pbmclapply(AA_Tbl_Files,function(x){
     tbl <- data.table::fread(x)
     if(nrow(tbl) == 0){
       return(data.frame(ID = character(),Genotype = numeric()))
@@ -90,7 +90,7 @@ NucSynTblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,missing_matrix){
   all_sample_ids <- sapply(all_sample_ids,function(x) gsub(pattern = '.txt',replacement = '',x=x))
   
   #Get all non-syn variants for each Mtb sample
-  all_variants <- mclapply(AA_Tbl_Files,function(x){
+  all_variants <- pbmclapply(AA_Tbl_Files,function(x){
     tbl <- data.table::fread(x)
     if(nrow(tbl) == 0){
       return(data.frame(ID = character(),Genotype = numeric()))

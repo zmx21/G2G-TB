@@ -1,0 +1,16 @@
+HWE=1e-5
+GENO=0.1
+MIND=0.1
+#Apply Filter
+~/Software/plink --vcf ../Raw_Merged/TBDAR.Genotyped.Merged.vcf.gz --hwe $HWE --geno $GENO --keep-allele-order --export vcf --out ../Filt_Merged/tmp
+~/Software/plink --vcf ../Filt_Merged/tmp.vcf --mind $MIND --keep-allele-order --export vcf --out ../Filt_Merged/tmp2
+#Rename 23 to X
+printf '%s\n' '23 X' '25 X' > ../Filt_Merged/chr_names.txt
+~/Software/bcftools annotate --rename-chrs '../Filt_Merged/chr_names.txt' ../Filt_Merged/tmp2.vcf -O z -o ../Filt_Merged/TBDAR.Genotyped.Merged.Filt.vcf.gz
+#Index VCF file
+~/Software/bcftools index ../Filt_Merged/TBDAR.Genotyped.Merged.Filt.vcf.gz
+#Create BIM,BED,FAM
+~/Software/plink2 --vcf ../Filt_Merged/TBDAR.Genotyped.Merged.Filt.vcf.gz --split-par hg19 --keep-allele-order --make-bed --out ../Filt_Merged/TBDAR.Genotyped.Merged.Filt
+
+rm ../Filt_Merged/tmp*
+rm ../Filt_Merged/chr_names.txt

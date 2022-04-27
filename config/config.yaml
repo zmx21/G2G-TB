@@ -1,30 +1,29 @@
 #File Path
 MTB_DATA: '../data/Mtb/'
 Pheno_DATA: '../data/pheno/'
-Genotyping_DATA: '../data/Genotyping/'
+Metdata: '../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt'
 HLA_Data: '../data/HLA/FourDigits/'
 SCRATCH_DIR: '../scratch/'
 RESULTS_DIR: '../results/'
-host_vcf: '../data/Genotyping/TB_DAR_AFGR_Tanz_Imputed_ChrX/AFGR_Tanz.imputed.vcf.gz'
+host_bfile: '../data/Genotyping_WGS/TBDAR.WGS.Imputed.GWASReady'
 PASCAL_path: '/home/zmxu/Software/PASCAL/'
 
 #Pathogen Variant Type Settings
 SIFT: 'False'
 Burden: 'False'
-Deletion: 'True'
-Analysis_Type: 'G2G' #tbscore or xrayscore
-Homo_Only: 'True'
+Deletion: 'False'
+Analysis_Type: 'G2G' #G2G or xrayscore
+Homo_Only: 'False'
 tool: 'PLINK'
 
 #Pathogen Settings
-Pathogen_MAC_pPCA: 5
+Pathogen_MAC_pPCA: 10
 Pathogen_MAC_AA_Lineage: 10
 Pathogen_MAC_AA: 10
 N_pPC: 0
+Stratified: 'False'
 
 #Host Settings
-Reference_Panel: "AFGR_Tanz_ChrX"
 Host_MAF: 0.05
-X_Chr: 'True'
 N_PC: 3
-covars_to_incl: 'NA'
+Covars_to_incl: 'patient_sex'

@@ -1,64 +1,9 @@
 library(dplyr)
-GetParsedMapping <- function(Genotyping_DIR,Pheno_DIR,Phylo_Tree_Path){
-  #Get genotyped patient IDs
-  fam_file_genotyped <- data.table::fread(glue::glue('{Genotyping_DIR}TB_DAR_Genotyping_WGS_Merged/WGS.genotyped.merged.fam'))
-  genotyped_IDs <- sapply(fam_file_genotyped$V2,function(x) ifelse(grepl(x=x,pattern = '-'),strsplit(x=x,split = '-')[[1]][1],x))
-  genotyped_IDs <- sapply(genotyped_IDs,function(x) strsplit(x=x,split = "_")[[1]][2])
-  genotyped_IDs <- sapply(genotyped_IDs,function(x) ifelse(grepl(x=x,pattern = 'Fellay\\.'),strsplit(x=x,split = 'Fellay\\.')[[1]][2],x))
-  
-  
-  #Old meta data file, sent on 27/28/2020
-  meta1 <- data.table::fread(glue::glue("{Pheno_DIR}metadata_bloodbacgenomes_27082020.txt")) %>% dplyr::filter(PATIENT_ID %in% genotyped_IDs)
-  #New meta data file, sent on 16/10/2020
-  meta2 <- readxl::read_xlsx(glue::glue("{Pheno_DIR}metadata_2020-10-16_17-36-52.xlsx")) %>% dplyr::filter(`PATIENT ID` %in% genotyped_IDs)
-  #Third meta data file, sent on 12/02/2021
-  meta3 <- data.table::fread(glue::glue("{Pheno_DIR}metadata_combined_genomes_022021_inclXray.txt")) %>% dplyr::filter(PATIENT_ID %in% genotyped_IDs)
-  
-  #IDs based on VCF files 
-  VCF_DIR <- '~/G2G_TB/data/Mtb/Mtb_VCF_files/full/'
-  VCF_Files <- dir(VCF_DIR)[grepl(pattern = 'var.homo',x=dir(VCF_DIR))]
-  VCF_IDs <- sapply(VCF_Files,function(x) strsplit(x=x,split = '\\.')[[1]][1])
-  
-  #Patient ID to G Number, based on metadata1
-  meta1_mapping <- dplyr::select(meta1,PATIENT_ID,G_NUMBER,LINEAGE.1=`G_NUMBER/LINEAGE`)
-  meta1_mapping$PATIENT_ID <- as.character(meta1_mapping$PATIENT_ID)
-  
-  #Patient ID to G Number, based on metadata2
-  meta2_mapping <- dplyr::select(meta2,PATIENT_ID=`PATIENT ID`,G_NUMBER=`G NUMBER`)
-  
-  #Patient ID to G Number, based on metadata3
-  meta3_mapping <- dplyr::select(meta3,PATIENT_ID,G_NUMBER,LINEAGE.3=Lineage)
-  meta3_mapping$PATIENT_ID <- as.character(meta3_mapping$PATIENT_ID)
-  
-  
-  #Discrepancy between the two mapping
-  jned_mapping <- dplyr::left_join(meta2_mapping,meta1_mapping,by=c('PATIENT_ID'='PATIENT_ID')) %>% dplyr::left_join(meta3_mapping,by=c('PATIENT_ID'='PATIENT_ID')) %>% dplyr::rename(G_NUMBER.2 = G_NUMBER.x,
-                                                                                                                                                                                      G_NUMBER.1 = G_NUMBER.y,
-                                                                                                                                                                                      G_NUMBER.3 = G_NUMBER)
-  disrep_mapping <- jned_mapping[which(jned_mapping$G_NUMBER.1 != jned_mapping$G_NUMBER.2),]
-  #nrow(disrep_mapping) #85 patients with disrepancy in mapping
-  #View(disrep_mapping)
-  
-  #Check which mapping VCF files correspond to
-  #length(intersect(VCF_IDs,disrep_mapping$G_NUMBER.1)) # Most VCFs (85) correspond to ID in meta1
-  #length(intersect(VCF_IDs,disrep_mapping$G_NUMBER.2)) #Some VCFs (5) correspond to ID in meta2
-  
-  #disrep_mapping[(disrep_mapping$G_NUMBER.1 %in% VCF_IDs & disrep_mapping$G_NUMBER.2 %in% VCF_IDs),] #For some patients (5 in total), both G Number correspond to a VCF file
-  #disrep_mapping[(disrep_mapping$G_NUMBER.1 %in% VCF_IDs & !disrep_mapping$G_NUMBER.2 %in% VCF_IDs),] #For some patients (5 in total), both G Number correspond to a VCF file
-  
-  #Check which mapping tree file correspond to
-  tree <- ape::read.tree(Phylo_Tree_Path)
-  tree_tips <- tree$tip.label
-  length(intersect(tree_tips,disrep_mapping$G_NUMBER.1)) # Some VCFs (5) correspond to ID in meta1
-  length(intersect(tree_tips,disrep_mapping$G_NUMBER.2)) #Most VCFs (82) correspond to ID in meta2
-  #disrep_mapping[(disrep_mapping$G_NUMBER.1 %in% tree_tips & disrep_mapping$G_NUMBER.1 %in% tree_tips),] #For the same patients as the VCF files (5 in total), both G Number correspond to a tree tip. 
-  
-  parsed_mapping <- rbind(dplyr::filter(jned_mapping,G_NUMBER.3 %in% VCF_IDs) %>% dplyr::select(PATIENT_ID,G_NUMBER = G_NUMBER.3,LINEAGE = LINEAGE.3),
-                          dplyr::filter(jned_mapping,!G_NUMBER.3 %in% VCF_IDs & G_NUMBER.2 %in% VCF_IDs) %>% dplyr::select(PATIENT_ID,G_NUMBER = G_NUMBER.2,LINEAGE = LINEAGE.1),
-                          dplyr::filter(jned_mapping,!G_NUMBER.3 %in% VCF_IDs & !G_NUMBER.2 %in% VCF_IDs & G_NUMBER.1 %in% VCF_IDs) %>% dplyr::select(PATIENT_ID,G_NUMBER = G_NUMBER.1,LINEAGE = LINEAGE.1))
-  return(parsed_mapping)
-}
+library(ape)
+library(phylobase)
+library(adephylo)
 
+#Minor allele count of a TB variant
 GetMAC <- function(AA_Matrix_filt){
   MAC <- apply(AA_Matrix_filt,2,function(x) {
     no_na <- x[!is.na(x)]
@@ -70,6 +15,7 @@ GetMAC <- function(AA_Matrix_filt){
   })
   return(MAC)
 }
+#Phylogenetic PC 
 ConstructpPCA <- function(AA_Table,Phylo_Tree_Path,ID_Mapping_df,pPCA = T,mac_thresh = 5){
   tree <- ape::read.tree(Phylo_Tree_Path)
   ID_Mapping_df_filt <- dplyr::filter(ID_Mapping_df,G_NUMBER %in% tree$tip.label & !is.na(LINEAGE))
@@ -150,12 +96,10 @@ FilterAAMatrix <- function(AA_Matrix,Lineage_Df,MAC_Thresh){
   return(AA_Matrix_filt_by_lineage)
 }
 
+SetUpG2G <- function(OUT_DIR,Metadata_Path,Host_PC_Path,Var_Tbl_Path,Phylo_Tree_Path,Mtb_Nuc_Out,Host_MAF,Pathogen_MAC_pPCA,Pathogen_MAC_AA_Lineage,Pathogen_MAC_AA,BFILE_Path,Host_Files,n_cores){
 
-SetUpG2G <- function(OUT_DIR,Genotyping_DIR,Pheno_DIR,Var_Tbl_Path,Phylo_Tree_Path,Mtb_Nuc_Out,Ref_Panel,Host_MAF,Pathogen_MAC_pPCA,Pathogen_MAC_AA_Lineage,
-                     Pathogen_MAC_AA,VCF_Path,n_cores){
-
-  #Get mapping file with consensus samples
-  parsed_mapping <- GetParsedMapping(Genotyping_DIR,Pheno_DIR,Phylo_Tree_Path)
+  #Get metadata file
+  parsed_mapping <- data.table::fread(Metadata_Path) %>% dplyr::select(PATIENT_ID,G_NUMBER,LINEAGE=Lineage)
   
   #Get nucleotide variant matrix
   nuc_matrix <- data.table::fread(Mtb_Nuc_Out)
@@ -171,24 +115,10 @@ SetUpG2G <- function(OUT_DIR,Genotyping_DIR,Pheno_DIR,Var_Tbl_Path,Phylo_Tree_Pa
   vir_pPCs <- lapply(vir_pPCA,function(x) cbind(G_NUMBER=rownames(x$li),as.data.frame(x$li)) %>% dplyr::left_join(parsed_mapping))
   
   #Get consensus samples 
-  host_IDs <- data.table::fread(glue::glue("{VCF_Path}/TB_DAR_Imputed_GWAS.fam"))$V2
-  WGS_index <- sapply(host_IDs,function(x) grepl(x=x,pattern = 'WGS_Fellay'))
-  if(any(WGS_index)){
-    host_genotyped_IDs <- host_IDs[!WGS_index]
-    host_genotyped_IDs_simple <- sapply(host_genotyped_IDs,function(x) strsplit(x=x,split = '_')[[1]][2])
-    host_genotyped_IDs_simple <- sapply(host_genotyped_IDs_simple,function(x) ifelse(grepl(x=x,pattern = '-'),strsplit(x=x,split = '-')[[1]][1],x))
-    
-    host_WGS_IDs_simple <- sapply(host_IDs[WGS_index],function(x) strsplit(x=x,split = 'WGS_Fellay\\.')[[1]][2])
-    
-    host_IDs_simple <- rep(NA,length(host_IDs))
-    host_IDs_simple[!WGS_index] <- host_genotyped_IDs_simple
-    host_IDs_simple[WGS_index] <- host_WGS_IDs_simple
-    names(host_IDs_simple) <- host_IDs
-    
-  }else{
-    host_genotyped_IDs <- sapply(host_IDs,function(x) strsplit(x=x,split = '_')[[1]][2])
-    host_IDs_simple <- sapply(host_genotyped_IDs,function(x) ifelse(grepl(x=x,pattern = '-'),strsplit(x=x,split = '-')[[1]][1],x))
-  }
+  host_IDs <- data.table::fread(glue::glue("{BFILE_Path}.fam"))$V2
+  host_IDs_simple <- sapply(host_IDs,function(x) gsub(x=x,pattern = 'WGS_Fellay.',replacement = ''))
+  host_IDs_simple <- sapply(host_IDs_simple,function(x) gsub(x=x,pattern = 'Batch1_',replacement = ''))
+  host_IDs_simple <- sapply(host_IDs_simple,function(x) gsub(x=x,pattern = 'Batch2_',replacement = ''))
   
   #Initialize variables to store
   both_IDs_to_keep <- vector(mode = 'list',length = length(vir_pPCs)); names(both_IDs_to_keep) <- names(vir_pPCs)
@@ -196,55 +126,49 @@ SetUpG2G <- function(OUT_DIR,Genotyping_DIR,Pheno_DIR,Var_Tbl_Path,Phylo_Tree_Pa
   covars <- vector(mode = 'list',length = length(vir_pPCs)); names(covars) <- names(vir_pPCs)
   
   #Get Host PCs
-  host_PCs_raw <- data.table::fread(glue::glue("{VCF_Path}/TB_DAR_Imputed_GWAS_PCA.eigenvec"))
+  host_PCs_raw <- data.table::fread(Host_PC_Path)
   
   #Get Covars
-  covars_discrete <- data.table::fread(glue::glue("{VCF_Path}/covars_discrete")) 
-  covars_numeric <- data.table::fread(glue::glue("{VCF_Path}/covars_numeric")) 
+  covars_discrete <- data.table::fread(glue::glue("{Host_Files}/covars_discrete"),sep = '\t',na.strings = c("",'unknown')) 
+  covars_numeric <- data.table::fread(glue::glue("{Host_Files}/covars_numeric"),sep = '\t',na.strings = c("",'unknown')) 
   covars_raw <- dplyr::inner_join(covars_discrete,covars_numeric)
   
   #Loop through lineages, store PLINK files, covars, and host PCs
   for(i in 1:length(vir_pPCs)){
-    system(glue::glue('mkdir -p {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/'))
+    system(glue::glue('mkdir -p {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/'))
     pathogen_IDs_to_keep <- dplyr::filter(parsed_mapping,G_NUMBER %in% vir_pPCs[[i]]$G_NUMBER)
     both_IDs_to_keep[[i]] <- dplyr::filter(pathogen_IDs_to_keep,PATIENT_ID %in% host_IDs_simple)
     both_IDs_to_keep[[i]]$FAM_ID <- host_IDs[match(both_IDs_to_keep[[i]]$PATIENT_ID,host_IDs_simple)]
-    write(both_IDs_to_keep[[i]]$FAM_ID,file = glue::glue("{OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt"))
+    data.table::fwrite(data.frame(FID=both_IDs_to_keep[[i]]$FAM_ID,IID=both_IDs_to_keep[[i]]$FAM_ID),
+                       file = glue::glue("{OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt"),sep = '\t',quote = F)
     
     #Write out PLINK files with samples to keep
     system(
       glue::glue(
-        "plink2 --bfile {VCF_Path}/TB_DAR_Imputed_GWAS --keep {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --indiv-sort f {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw"
+        "~/Software/plink2 --bfile {BFILE_Path} --keep {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --indiv-sort f {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_G2G_Raw"
       )
     )
     
     #Apply MAF Filter
     system(
       glue::glue(
-        "plink --bfile {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw --impute-sex --make-bed --out {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw2"
-      )
-    )
-    
-    #Impute Sex
-    system(
-      glue::glue(
-        "plink2 --bfile {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw2 --maf {Host_MAF} --indiv-sort f {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G"
+        "~/Software/plink2 --bfile {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_G2G_Raw --maf {Host_MAF} --indiv-sort f {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_G2G"
       )
     )
     
     #Write out HLA PLINK files with samples to keep
     system(
       glue::glue(
-        "plink2 --bfile {VCF_Path}/TB_DAR_HLA_Alleles --keep {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --indiv-sort f {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_HLA_Alleles_G2G"
+        "~/Software/plink2 --bfile {Host_Files}/TB_DAR_HLA_Alleles --keep {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --indiv-sort f {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_HLA_Alleles_G2G"
       )
     )
     system(
       glue::glue(
-        "plink2 --bfile {VCF_Path}/TB_DAR_HLA_AA --keep {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --indiv-sort f {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_HLA_AA_G2G"
+        "~/Software/plink2 --bfile {Host_Files}/TB_DAR_HLA_AA --keep {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --indiv-sort f {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/G2G_Samples.txt --make-bed --out {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_HLA_AA_G2G"
       )
     )
     
-    system(glue::glue("rm {OUT_DIR}/{Ref_Panel}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_Imputed_G2G_Raw*"))
+    system(glue::glue("rm {OUT_DIR}/LINEAGE_{names(vir_pPCs)[i]}/TB_DAR_G2G_Raw*"))
     #Order and filter host PCs
     host_PCs[[i]] <- dplyr::left_join(data.frame('IID' = both_IDs_to_keep[[i]]$FAM_ID),host_PCs_raw[,-1],by=c('IID'='V2'))
     colnames(host_PCs[[i]]) <- c('IID',paste0('PC',seq(1,ncol(host_PCs[[i]])-1,1)))
@@ -257,24 +181,24 @@ SetUpG2G <- function(OUT_DIR,Genotyping_DIR,Pheno_DIR,Var_Tbl_Path,Phylo_Tree_Pa
   }
   #Unstratified AA matrix
   aa_matrix <- readRDS(Var_Tbl_Path) 
-  aa_matrix_raw <- aa_matrix[both_IDs_to_keep[['ALL']]$G_NUMBER,,drop=FALSE]
-  aa_matrix_raw <- aa_matrix_raw[,GetMAC(aa_matrix_raw) > Pathogen_MAC_AA,drop=FALSE]
+  aa_matrix_full <- aa_matrix[both_IDs_to_keep[['ALL']]$G_NUMBER,,drop=FALSE]
+  aa_matrix_full<- aa_matrix_full[,GetMAC(aa_matrix_full) > Pathogen_MAC_AA,drop=FALSE]
   
   
   #Filter AA Matrix, decide for each variant whether to do stratified or stratified analysis
-  aa_matrix_filt <- FilterAAMatrix(aa_matrix_raw,both_IDs_to_keep,MAC_Thresh = Pathogen_MAC_AA_Lineage) 
+  aa_matrix_filt <- FilterAAMatrix(aa_matrix_full,both_IDs_to_keep,MAC_Thresh = Pathogen_MAC_AA_Lineage) 
   
   #Path to VCF file (for each lineage)
-  host_path <- glue::glue("{OUT_DIR}/{Ref_Panel}/LINEAGE_{c(names(vir_pPCs),'ALL')}/TB_DAR_Imputed_G2G")
+  host_path <- glue::glue("{OUT_DIR}/LINEAGE_{c(names(vir_pPCs),'ALL')}/TB_DAR_G2G")
   names(host_path) <- c(names(vir_pPCs),'ALL')
   
   #Load TB Score
-  tb_score <- data.table::fread(glue::glue("{VCF_Path}/tb_score"))
-  tb_score_by_lineage <- lapply(both_IDs_to_keep,function(x) dplyr::left_join(x %>% dplyr::select(IID=FAM_ID),tb_score,c('IID'='IID')) %>% dplyr::relocate(FID,IID,tb_score))
+  tb_score_df <- data.table::fread(glue::glue("{Host_Files}/TB_score"))
+  tb_score_by_lineage <- lapply(both_IDs_to_keep,function(x) dplyr::left_join(x %>% dplyr::select(IID=FAM_ID),tb_score_df,c('IID'='IID')) %>% dplyr::relocate(FID,IID,TB_score))
   
   #Load X-Ray Score
-  xray_score <- data.table::fread(glue::glue("{VCF_Path}/xray_score"))
-  xray_score_by_lineage <- lapply(both_IDs_to_keep,function(x) dplyr::left_join(x %>% dplyr::select(IID=FAM_ID),xray_score,c('IID'='IID')) %>% dplyr::relocate(FID,IID,xray_score))
+  xray_score_df <- data.table::fread(glue::glue("{Host_Files}/Xray_score"))
+  xray_score_by_lineage <- lapply(both_IDs_to_keep,function(x) dplyr::left_join(x %>% dplyr::select(IID=FAM_ID),xray_score_df,c('IID'='IID')) %>% dplyr::relocate(FID,IID,Xray_score))
   
   return(list(host_PCs=host_PCs,
               vir_pPCs=vir_pPCs,
@@ -282,7 +206,7 @@ SetUpG2G <- function(OUT_DIR,Genotyping_DIR,Pheno_DIR,Var_Tbl_Path,Phylo_Tree_Pa
               tb_score=tb_score_by_lineage,
               xray_score = xray_score_by_lineage,
               aa_matrix_filt=aa_matrix_filt,
-              aa_matrix_raw=aa_matrix_raw,
+              aa_matrix_full=aa_matrix_full,
               nuc_matrix = nuc_matrix_trans,
               both_IDs_to_keep=both_IDs_to_keep,
               host_path = host_path,
@@ -290,20 +214,34 @@ SetUpG2G <- function(OUT_DIR,Genotyping_DIR,Pheno_DIR,Var_Tbl_Path,Phylo_Tree_Pa
 }
 
 
-args <- commandArgs(trailingOnly = TRUE) 
+args <- commandArgs(trailingOnly = TRUE)
 OUT_DIR <- args[[1]]
-Genotyping_DIR <- args[[2]]
-Pheno_DIR <- args[[3]]
+Metadata_Path <- args[[2]]
+Host_PC_Path <- args[[3]]
 Var_Tbl_Path <- args[[4]]
 Phylo_Tree_Path <- args[[5]]
 Mtb_Nuc_Out <- args[[6]]
-Ref_Panel <- args[[7]]
-Host_MAF <- as.numeric(args[[8]])
-Pathogen_MAC_pPCA <- as.numeric(args[[9]])
-Pathogen_MAC_AA_Lineage <- as.numeric(args[[10]])
-Pathogen_MAC_AA <- as.numeric(args[[11]])
-VCF_Path <- args[[12]]
+Host_MAF <- as.numeric(args[[7]])
+Pathogen_MAC_pPCA <- as.numeric(args[[8]])
+Pathogen_MAC_AA_Lineage <- as.numeric(args[[9]])
+Pathogen_MAC_AA <- as.numeric(args[[10]])
+BFILE_Path <- gsub(args[[11]],pattern = '.bed',replacement = '')
+Host_Files <- args[[12]]
 n_cores <- as.numeric(args[[13]])
 
-G2G_Obj <- SetUpG2G(OUT_DIR,Genotyping_DIR,Pheno_DIR,Var_Tbl_Path,Phylo_Tree_Path,Mtb_Nuc_Out,Ref_Panel,Host_MAF,Pathogen_MAC_pPCA,Pathogen_MAC_AA_Lineage,Pathogen_MAC_AA,VCF_Path,n_cores)
-saveRDS(G2G_Obj,glue::glue("{OUT_DIR}/{Ref_Panel}/G2G_Obj.rds"))
+# OUT_DIR <- '../../results/Burden_False_SIFT_False_Del_True_HomoOnly_True/'
+# Metadata_Path <- '../../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt'
+# Host_PC_Path <- '../../scratch/Host/TB_DAR_GWAS_PCA.eigenvec'
+# Var_Tbl_Path <- '../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True/Mtb_Var_Tbl.rds'
+# Phylo_Tree_Path <- '../../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk'
+# Mtb_Nuc_Out <- '../../data/Mtb/merged/merged.var.homo.SNPs.vcf.dosage'
+# Host_MAF <- 0.05
+# Pathogen_MAC_pPCA <- 10
+# Pathogen_MAC_AA_Lineage <- 10
+# Pathogen_MAC_AA <- 10
+# BFILE_Path <- '../../data/Genotyping_WGS/TBDAR.WGS.Imputed.GWASReady'
+# Host_Files <- '../../scratch/Host/'
+# n_cores <- 1
+
+G2G_Obj <- SetUpG2G(OUT_DIR=OUT_DIR,Metadata_Path=Metadata_Path,Host_PC_Path=Host_PC_Path,Var_Tbl_Path=Var_Tbl_Path,Phylo_Tree_Path=Phylo_Tree_Path,Mtb_Nuc_Out=Mtb_Nuc_Out,Host_MAF=Host_MAF,Pathogen_MAC_pPCA=Pathogen_MAC_pPCA,Pathogen_MAC_AA_Lineage=Pathogen_MAC_AA_Lineage,Pathogen_MAC_AA=Pathogen_MAC_AA,BFILE_Path=BFILE_Path,Host_Files=Host_Files,n_cores=n_cores)
+saveRDS(G2G_Obj,glue::glue("{OUT_DIR}/G2G_Obj.rds"))
