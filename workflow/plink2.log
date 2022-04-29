@@ -1,0 +1,26 @@
+PLINK v2.00a3LM 64-bit Intel (27 Jul 2020)
+Options in effect:
+  --bfile ../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_False/LINEAGE_ALL/TB_DAR_G2G
+  --covar ../results/Burden_False_SIFT_False_Del_False_HomoOnly_False/PLINK//PC_3_pPC_0//Stratified_False//LINEAGE_ALL//tmp/plink-covars.txt
+  --covar-variance-standardize
+  --glm cc-residualize hide-covar
+  --no-sex
+
+Hostname: grfepc5
+Working directory: /mnt/data3/zmxu/G2G_TB/workflow
+Start time: Wed Apr 27 15:04:48 2022
+
+Random number seed: 1651064688
+257678 MiB RAM detected; reserving 128839 MiB for main workspace.
+Using up to 128 threads (change this with --threads).
+914 samples (0 females, 0 males, 914 ambiguous; 914 founders) loaded from
+../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_False/LINEAGE_ALL/TB_DAR_G2G.fam.
+6587139 variants loaded from
+../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_False/LINEAGE_ALL/TB_DAR_G2G.bim.
+Note: No phenotype data present.
+4 covariates loaded from ../results/Burden_False_SIFT_False_Del_False_HomoOnly_False/PLINK//PC_3_pPC_0//Stratified_False//LINEAGE_ALL//tmp/plink-covars.txt.
+--covar-variance-standardize: 3 covariates transformed.
+Calculating allele frequencies... done.
+Error: No phenotypes loaded.
+
+End time: Wed Apr 27 15:04:49 2022

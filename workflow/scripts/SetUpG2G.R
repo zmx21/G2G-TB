@@ -10,7 +10,7 @@ GetMAC <- function(AA_Matrix_filt){
     if(length(no_na) == 0){
       return(0)
     }
-    no_na_binary <- ifelse(no_na == 0,0,1)
+    no_na_binary <- ifelse(no_na == 0,0,1) #Set to binary matrix (0 for absent, 1 more present - either homo or hetero call or burden)
     return(ifelse(length(unique(no_na_binary)) != 1,min(table(no_na_binary)),length(no_na_binary) - min(table(no_na_binary))))
   })
   return(MAC)
@@ -180,7 +180,10 @@ SetUpG2G <- function(OUT_DIR,Metadata_Path,Host_PC_Path,Var_Tbl_Path,Phylo_Tree_
     covars[[i]] <- dplyr::left_join(data.frame(IID=both_IDs_to_keep[[i]]$FAM_ID),covars_raw) %>% dplyr::select(-contains("PC"))
   }
   #Unstratified AA matrix
-  aa_matrix <- readRDS(Var_Tbl_Path) 
+  aa_matrix <- readRDS(Var_Tbl_Path)
+  if(grepl(pattern = 'Burden_True',x=OUT_DIR)){
+    aa_matrix <- aa_matrix$non_syn_burden
+  }
   aa_matrix_full <- aa_matrix[both_IDs_to_keep[['ALL']]$G_NUMBER,,drop=FALSE]
   aa_matrix_full<- aa_matrix_full[,GetMAC(aa_matrix_full) > Pathogen_MAC_AA,drop=FALSE]
   
@@ -229,10 +232,10 @@ BFILE_Path <- gsub(args[[11]],pattern = '.bed',replacement = '')
 Host_Files <- args[[12]]
 n_cores <- as.numeric(args[[13]])
 
-# OUT_DIR <- '../../results/Burden_False_SIFT_False_Del_True_HomoOnly_True/'
+# OUT_DIR <- '../../results/Burden_True_SIFT_True_Del_False_HomoOnly_True/'
 # Metadata_Path <- '../../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt'
 # Host_PC_Path <- '../../scratch/Host/TB_DAR_GWAS_PCA.eigenvec'
-# Var_Tbl_Path <- '../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True/Mtb_Var_Tbl.rds'
+# Var_Tbl_Path <- '../../scratch/Burden_True_SIFT_True_Del_False_HomoOnly_True/Mtb_Var_Tbl.rds'
 # Phylo_Tree_Path <- '../../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk'
 # Mtb_Nuc_Out <- '../../data/Mtb/merged/merged.var.homo.SNPs.vcf.dosage'
 # Host_MAF <- 0.05

@@ -9,7 +9,6 @@ if config["Analysis_Type"] == "G2G":
   rule all:
     input:
       results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+'/'+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/G2G_results.rds"
-      
 elif config["Analysis_Type"] == "TB_score" or config["Analysis_Type"] == "Xray_score":
   rule all:
     input:
@@ -123,7 +122,8 @@ rule make_AA_Matrix:
   params:
     IS_SIFT=bool(strtobool(config["SIFT"])),
     IS_Burden=bool(strtobool(config["Burden"])),
-    IS_Deletion=bool(strtobool(config["Deletion"]))
+    IS_Deletion=bool(strtobool(config["Deletion"])),
+    metadata=config["Metdata"]
   output:
     Mtb_Var_Tbl=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"/Mtb_Var_Tbl.rds",
   threads: 
@@ -131,7 +131,7 @@ rule make_AA_Matrix:
   conda:
     '../envs/Mtb_Processing.yaml'
   shell:
-    "Rscript ./scripts/MakeVariantMatrix.R {input.AA_variant} {input.Syn_variant} {input.missing_mat} {input.phylo_snps} {input.del_tbl} {input.sift_path} {params.IS_SIFT} {params.IS_Burden} {params.IS_Deletion} {output.Mtb_Var_Tbl} {threads}"
+    "Rscript ./scripts/MakeVariantMatrix.R {input.AA_variant} {input.Syn_variant} {input.missing_mat} {input.phylo_snps} {input.del_tbl} {input.sift_path} {params.IS_SIFT} {params.IS_Burden} {params.IS_Deletion} {output.Mtb_Var_Tbl} {params.metadata} {threads}"
     
 def merged_dosage_path(wildcards):
   # return homo SNPs only
@@ -148,7 +148,7 @@ rule setup_host:
   params:
     Out_DIR=config["SCRATCH_DIR"],
     excl_region='../data/exclusion_regions_hg19.txt',
-    metadata=config["Pheno_DATA"]+'metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt'
+    metadata=config["Metdata"]
   output:
     config["SCRATCH_DIR"]+"Host/TB_DAR_GWAS_PCA.eigenvec"
   threads:
@@ -167,7 +167,7 @@ rule setup_G2G:
     host_bfile=config["host_bfile"]+'.bed',
     host_pc=config["SCRATCH_DIR"]+"Host/TB_DAR_GWAS_PCA.eigenvec"
   params:
-    metadata=config["Pheno_DATA"]+'metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt',
+    metadata=config["Metdata"],
     Phylo_Tree_Path=config["MTB_DATA"]+'RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
     Out_DIR=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"],
     Host_MAF=config["Host_MAF"],

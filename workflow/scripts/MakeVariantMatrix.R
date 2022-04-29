@@ -4,6 +4,7 @@ library(ape)
 library(parallel)
 library(pbmcapply)
 library(filematrix)
+library(data.table)
 
 #Filter variants which only appear in one lineage, and show no variability within the lineage.
 RemoveStratVariants <- function(AA_Matrix,Lineage_Df){
@@ -15,7 +16,7 @@ RemoveStratVariants <- function(AA_Matrix,Lineage_Df){
   AA_Matrix_filt <- AA_Matrix_filt[,!apply(AA_Matrix_filt,2,function(x) all(is.na(x)))]
   
   #Assign variants to lineages
-  strat_table <- lapply(1:ncol(AA_Matrix_filt),function(i) table(ifelse(AA_Matrix_filt[,i]==0,0,1),Lineage_Df$LINEAGE))
+  strat_table <- lapply(1:ncol(AA_Matrix_filt),function(i) table(ifelse(AA_Matrix_filt[,i]==0,0,1),Lineage_Df$Lineage))
   strat_assng <- vector(mode = 'logical',length = length(strat_table))
   for(i in 1:length(strat_table)){
     cur_strat <- strat_table[[i]]
@@ -33,7 +34,7 @@ RemoveStratVariants <- function(AA_Matrix,Lineage_Df){
 #Merge AA table of each Mtb sequence into a matrix
 AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_thresh = 0.1,n_cores = 10,missing_matrix){
   if(!is.null(sift_table)){
-    sift_excl <- dplyr::filter(sift_table,SIFT_score > sift_thresh)
+    sift_excl <- dplyr::filter(sift_table,SIFT_score > sift_thresh) %>% dplyr::select(POS = `#Position`,REF=Ref_allele,ALT=New_allele) %>% dplyr::filter(REF != ALT)
   }
   #Parse all sample IDs
   all_sample_ids <- sapply(AA_Tbl_Files,function(x) strsplit(x=x,split = '/')[[1]][length(strsplit(x=x,split = '/')[[1]])])
@@ -84,7 +85,7 @@ AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_
 }
 
 #Merge Synonymous Nuc table of each Mtb sequence into a matrix
-NucSynTblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,missing_matrix){
+NucSynTblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,missing_matrix,n_cores = n_cores){
   #Parse all sample IDs
   all_sample_ids <- sapply(AA_Tbl_Files,function(x) strsplit(x=x,split = '/')[[1]][length(strsplit(x=x,split = '/')[[1]])])
   all_sample_ids <- sapply(all_sample_ids,function(x) gsub(pattern = '.txt',replacement = '',x=x))
@@ -129,9 +130,9 @@ NucSynTblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,missing_matrix){
   return(AA_Matrix)
 }
 
-GetGeneBurden <- function(AA_Matrix,AA_Matrix_Syn){
+GetGeneBurden <- function(AA_Matrix,AA_Matrix_Syn,metadata){
   #Remove SNPs that are lineage markers
-  AA_Matrix <- RemoveStratVariants(AA_Matrix,GetParsedMapping())
+  AA_Matrix <- RemoveStratVariants(AA_Matrix,metadata)
   
   #Get Variant-Gene mapping for all non-syn variants
   non_syn_variants <- colnames(AA_Matrix)
@@ -173,7 +174,7 @@ GetGeneBurden <- function(AA_Matrix,AA_Matrix_Syn){
   return(list(non_syn_burden=non_syn_burden,syn_burden=syn_burden,non_syn_variant_df=non_syn_variant_df,syn_variant_df=syn_variant_df))
 }
 
-args <- commandArgs(trailingOnly = TRUE) 
+args <- commandArgs(trailingOnly = TRUE)
 AA_variant_files <- args[grepl(args,pattern = 'AA_')]
 Syn_variant_files <- args[grepl(args,pattern = 'Syn_')]
 params <- args[!grepl(args,pattern = 'AA_') & !grepl(args,pattern = 'Syn_')]
@@ -186,7 +187,23 @@ IS_SIFT <- as.logical(params[[5]])
 IS_Burden <- as.logical(params[[6]])
 IS_Deletion <- as.logical(params[[7]])
 out_path <- params[[8]]
-n_cores <- as.numeric(params[[9]])
+metadata <- data.table::fread(params[[9]])
+n_cores <- as.numeric(params[[10]])
+
+
+# missing_mat <- readRDS('../scratch/Mtb_Coverage/missing_mat.rds')
+# phylo_snps <- '../data/Mtb/PositionsPhylogeneticSNPs_20171004.txt'
+# del_tbl <- '../data/Mtb/binary_table_genes_combined_genomes_022021.txt'
+# sift_path <- '../data/Mtb/SIFT/GCA_000195955.2.22/Chromosome.gz'
+# IS_SIFT <- F
+# IS_Burden <- T
+# IS_Deletion <- F
+# out_path <- '../scratch//Mtb_Var_Tbl.rds'
+# metadata <- data.table::fread('../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt')
+# n_cores <- 1
+# AA_variant_files <- paste0('../scratch/AA_HomoOnly_True/',metadata$G_NUMBER,'.txt') 
+# Syn_variant_files <- paste0('../scratch/Syn_HomoOnly_True/',metadata$G_NUMBER,'.txt') 
+
 
 if(is.na(IS_SIFT) | is.na(IS_Burden) | is.na(IS_Deletion)){
   stop('Please specify options')
@@ -214,7 +231,7 @@ if(!IS_Burden){
   }
 }else if(IS_Burden){
   if(IS_SIFT){
-    sift_table <- data.table::fread(cmd = glue::glue("zcat {sift_path}")) %>%
+    sift_table <- data.table::fread(cmd = glue::glue("zcat {sift_path}"))
     AA_Matrix_NonSyn <- AATblToMatrix(AA_Tbl_Files = AA_variant_files,phylo_snps=phylo_snps,sift_table = sift_table,missing_matrix=missing_mat,n_cores = n_cores)
   }else{
     AA_Matrix_NonSyn <- AATblToMatrix(AA_Tbl_Files = AA_variant_files,phylo_snps=phylo_snps,missing_matrix=missing_mat,n_cores = n_cores)
@@ -234,7 +251,7 @@ if(!IS_Burden){
     matrix_to_append[del_tbl$GNUMBER,] <- del_matrix
     AA_Matrix_NonSyn <- cbind(AA_Matrix_NonSyn,matrix_to_append)
   }
-  Gene_Burden <- GetGeneBurden(AA_Matrix = AA_Matrix_NonSyn,AA_Matrix_Syn = AA_Matrix_Syn)
+  Gene_Burden <- GetGeneBurden(AA_Matrix = AA_Matrix_NonSyn,AA_Matrix_Syn = AA_Matrix_Syn,metadata=metadata)
   AA_Matrix <- Gene_Burden
   
 }

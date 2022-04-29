@@ -73,9 +73,13 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = 'PLINK',n_PC = 5,n_pPC = 
       }
 
       #Extract/convert dosage
+      #If burden, > 1 (more than one variant in gene) also as present
       #Var_Type = Both, treat homo and hetero calls as present
       #Var_Type = Homo, treat homo calls as present, hetero calls as absent
-      if(var_type == 'both'){
+      if(grepl(pattern = 'Burden_True',x=OUT_DIR)){
+        cur_aa_matrix_filt[cur_aa_matrix_filt > 1] <- 1
+      }
+      else if(var_type == 'both'){
         cur_aa_matrix_filt[cur_aa_matrix_filt==2] <- 1
       }else if (var_type == 'homo'){
         cur_aa_matrix_filt[cur_aa_matrix_filt==1] <- 0
@@ -155,13 +159,13 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = 'PLINK',n_PC = 5,n_pPC = 
           if(is.na(model)){
               tryCatch(system(
                 glue::glue(
-                  "plink2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm cc-residualize hide-covar --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
+                  "~/Software/plink2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --glm cc-residualize hide-covar no-x-sex --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
                 )
               ))
           }else{
             tryCatch(system(
               glue::glue(
-                "plink2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm {model} cc-residualize hide-covar --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}.{model}"
+                "~/Software/plink2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --glm {model} cc-residualize hide-covar no-x-sex --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}.{model}"
               )
             ))
             
@@ -176,20 +180,20 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = 'PLINK',n_PC = 5,n_pPC = 
           
           tryCatch(system(
             glue::glue(
-              "plink2 --threads {n_cores} --bfile {Alleles_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_Allele/{cur_pathogen_variant}"
+              "~/Software/plink2 --threads {n_cores} --bfile {Alleles_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_Allele/{cur_pathogen_variant}"
             )
           ))
           
           tryCatch(system(
             glue::glue(
-              "plink2 --threads {n_cores} --bfile {AA_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_AA/{cur_pathogen_variant}"
+              "~/Software/plink2 --threads {n_cores} --bfile {AA_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_AA/{cur_pathogen_variant}"
             )
           ))
         }
         else if(tool == 'PLINK-FIRTH'){
           tryCatch(system(
             glue::glue(
-              "plink2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm firth hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
+              "~/Software/plink2 --threads {n_cores} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm firth hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
             )
           ))
         }

@@ -10,10 +10,10 @@ PASCAL_path: '/home/zmxu/Software/PASCAL/'
 
 #Pathogen Variant Type Settings
 SIFT: 'False'
-Burden: 'False'
+Burden: 'True'
 Deletion: 'False'
 Analysis_Type: 'G2G' #G2G or xrayscore
-Homo_Only: 'False'
+Homo_Only: 'True'
 tool: 'PLINK'
 
 #Pathogen Settings
