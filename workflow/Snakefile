@@ -13,7 +13,6 @@ elif config["Analysis_Type"] == "TB_score" or config["Analysis_Type"] == "Xray_s
   rule all:
     input:
       results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"/"+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/"+config["Analysis_Type"]+"_int_results.rds"
-
     
 rule process_mtb_VCF:
   input:
@@ -21,12 +20,13 @@ rule process_mtb_VCF:
   output:
     homo_snps=config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.var.homo.SNPs.vcf.gz',
     homo_het_snps=config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.var.homo.het.SNPs.vcf.gz',
-    missing_snps=config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.missing',
+    missing_snps_homo=config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.homo.missing',
+    missing_snps_homo_het=config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.homo.het.missing',
     reads=config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.reads.gz'
   threads:
     1
   conda:
-    '../envs/Mtb_Processing.yaml'
+    '../envs/Bcftools_Bedtools.yaml'
   shell:
     '''
       bcftools filter -i 'GT=="1/1"' -O z -o {output.homo_snps} {input.VCF_file} #Keep both homo calls only.
@@ -35,7 +35,9 @@ rule process_mtb_VCF:
       bcftools filter -i 'GT=="1/1" || GT=="0/1" || GT=="1/0"' -O z -o {output.homo_het_snps} {input.VCF_file} #Keep both homo and mixed calls.  
       bcftools index -t  {output.homo_het_snps}
 
-      bcftools filter -i 'GT=="./."' {input.VCF_file} | bcftools query -f '%POS %REF %ALT\n' > {output.missing_snps} 
+      bcftools filter -i 'GT=="./." || GT=="0/1" || GT=="1/0"' {input.VCF_file} | bcftools query -f '%POS %REF %ALT\n' > {output.missing_snps_homo} 
+
+      bcftools filter -i 'GT=="./."' {input.VCF_file} | bcftools query -f '%POS %REF %ALT\n' > {output.missing_snps_homo_het} 
       bcftools query -f '%POS %REF %ALT [%AD] [%RD] [%SDP] [%DP] [%RBQ] [%ABQ] [%RDF] [%RDR] [%ADF] [%ADR] [%FREQ] [%GT] [%GQ]\n' {input.VCF_file} | pigz --fast > {output.reads}
     '''
 
@@ -52,7 +54,7 @@ rule merge_mtb_VCF:
   threads:
     50
   conda:
-    '../envs/Mtb_Processing.yaml'
+    '../envs/Bcftools_Bedtools.yaml'
   shell:
     '''
       bcftools merge --threads {threads} -0 -m none {input.homo_snps} -O v -o {output.homo_snps}.tmp
@@ -69,16 +71,25 @@ rule merge_mtb_VCF:
       rm {output.homo_het_snps}.tmp
       bcftools +dosage {output.homo_het_snps}.gz > {output.homo_het_snps}.dosage
     '''
+    
+    
+def get_missing_path(wildcards):
+  # return missing file where het calls are treated as NA, along with missing positions
+  if strtobool(config["Homo_Only"]):
+      return expand(config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.homo.missing',id=Mtb_IDS)
+  # return missing file where only missing positions are treated as NA
+  else:
+      return expand(config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.homo.het.missing',id=Mtb_IDS)
 
 rule get_missing_pos:
   input:
       gff='../data/Mtb/Mtb_VCF_files/GCF_000195955.2.gff',
       VCF_Files=expand(config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.all.pos.vcf.gz',id=Mtb_IDS),
-      missing_files=expand(config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.missing',id=Mtb_IDS)
+      missing_files=get_missing_path
   params:
-      out_dir=config["SCRATCH_DIR"]+'Mtb_Coverage/'
+      out_dir=config["SCRATCH_DIR"]+'Mtb_Coverage/HomoOnly_'+config["Homo_Only"]+'/'
   output:
-      missing_mat=config["SCRATCH_DIR"]+'Mtb_Coverage/missing_mat.rds'
+      missing_mat=config["SCRATCH_DIR"]+'Mtb_Coverage/HomoOnly_'+config["Homo_Only"]+'/missing_mat.rds'
   threads: 
     50
   conda:
@@ -113,12 +124,12 @@ rule make_AA_Tbl:
 
 rule make_AA_Matrix:
   input:
-    missing_mat=config["SCRATCH_DIR"]+'Mtb_Coverage/missing_mat.rds',
+    missing_mat=config["SCRATCH_DIR"]+'Mtb_Coverage/HomoOnly_'+config["Homo_Only"]+'/missing_mat.rds',
     phylo_snps=config["MTB_DATA"]+'PositionsPhylogeneticSNPs_20171004.txt',
     sift_path=config["MTB_DATA"]+"SIFT/GCA_000195955.2.22/Chromosome.gz",
     AA_variant=expand(config["SCRATCH_DIR"]+'AA_HomoOnly_'+config["Homo_Only"]+'/{id}.txt',id=Mtb_IDS),
     Syn_variant=expand(config["SCRATCH_DIR"]+'Syn_HomoOnly_'+config["Homo_Only"]+'/{id}.txt',id=Mtb_IDS),
-    del_tbl=config["MTB_DATA"]+'binary_table_genes_combined_genomes_022021.txt'
+    del_tbl=config["Del_tbl"]
   params:
     IS_SIFT=bool(strtobool(config["SIFT"])),
     IS_Burden=bool(strtobool(config["Burden"])),
@@ -199,7 +210,7 @@ if config["Analysis_Type"] == "G2G":
     output:
       results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+'/'+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/G2G_results.rds"
     threads:
-      100
+      110
     conda:
       '../envs/G2G.yaml'
     shell:
@@ -221,7 +232,7 @@ elif config["Analysis_Type"] == "TB_score" or config["Analysis_Type"] == "Xray_s
     output:
       results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"/"+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/"+config["Analysis_Type"]+"_int_results.rds"
     threads:
-      100
+      110
     conda:
       '../envs/G2G.yaml'
     shell:

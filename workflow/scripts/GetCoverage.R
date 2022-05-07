@@ -38,7 +38,12 @@ GetGeneCoverage <- function(VCF_Files,ref_annot,n_cores){
 GetMissingMatrix <- function(missing_files){
   #Get data frame for each sample, containing missing positions
   missing_tbl <- lapply(missing_files,function(x) data.table::fread(x))
-  names(missing_tbl) <- sapply(missing_files,function(x) gsub(x=strsplit(x=x,split = '/')[[1]][length(strsplit(x=x,split = '/')[[1]])],pattern = '.missing',replacement = ''))
+  names(missing_tbl) <- sapply(missing_files,function(x) {
+    split_path <- strsplit(x=x,split = '/')[[1]]
+    file_name <- split_path[length(split_path)]
+    ID <- strsplit(file_name,split = '\\.')[[1]][1]
+    return(ID)
+  })
   
   uniq_pos <- sort(unique(do.call(rbind, missing_tbl)$V1))
   missing_mat <- matrix(F,nrow = length(uniq_pos),ncol = length(missing_tbl))

@@ -7,21 +7,22 @@ SCRATCH_DIR: '../scratch/'
 RESULTS_DIR: '../results/'
 host_bfile: '../data/Genotyping_WGS/TBDAR.WGS.Imputed.GWASReady'
 PASCAL_path: '/home/zmxu/Software/PASCAL/'
+Del_tbl: '../data/Mtb/binary_table_genes_Sinergia_final_dataset_human_bac_genome_available.txt'
 
 #Pathogen Variant Type Settings
 SIFT: 'False'
-Burden: 'True'
+Burden: 'False'
 Deletion: 'False'
+Stratified: 'False'
 Analysis_Type: 'G2G' #G2G or xrayscore
-Homo_Only: 'True'
+Homo_Only: 'False'
 tool: 'PLINK'
 
 #Pathogen Settings
-Pathogen_MAC_pPCA: 10
-Pathogen_MAC_AA_Lineage: 10
-Pathogen_MAC_AA: 10
+Pathogen_MAC_pPCA: 15
+Pathogen_MAC_AA_Lineage: 15
+Pathogen_MAC_AA: 15
 N_pPC: 0
-Stratified: 'False'
 
 #Host Settings
 Host_MAF: 0.05

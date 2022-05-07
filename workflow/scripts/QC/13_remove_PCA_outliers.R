@@ -33,5 +33,5 @@ GetPCAOutliers <- function(PCA_results,target_POP){
 # genotyping_outliers <- GetPCAOutliers('../../PCA/TBDAR.pca.eigenvec','AFR')
 # WGS_outliers <- GetPCAOutliers('../../../WGS/PCA_WGS/TBDAR.WGS.eigenvec','AFR')
 
-Genotyping_WGS_outliers <- GetPCAOutliers('../../../Genotyping_WGS/PCA/TBDAR.WGS.Imputed.eigenvec','AFR')
-data.table::fwrite(data.frame(FID=Genotyping_WGS_outliers$outliers,IID=Genotyping_WGS_outliers$outliers),'../../../Genotyping_WGS/QC/PCA_Outliers.txt',sep = ' ')
+Genotyping_WGS_outliers <- GetPCAOutliers('../../../data/Genotyping_WGS/PCA/TBDAR.WGS.Imputed.eigenvec','AFR')
+# data.table::fwrite(data.frame(FID=Genotyping_WGS_outliers$outliers,IID=Genotyping_WGS_outliers$outliers),'../../../Genotyping_WGS/QC/PCA_Outliers.txt',sep = ' ')

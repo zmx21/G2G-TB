@@ -1,0 +1,225 @@
+---
+title: "G2G_TB_Report"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library("ggVennDiagram")
+library("ggplot2")
+library(networkD3)
+```
+
+## Sample Status - Raw
+
+```{r stats}
+Genotyped_Samples <- data.table::fread('../../data/Genotyping/TB_DAR_Genotyping/Filt_Merged/TBDAR.Genotyped.Merged.Filt.fam')$V2
+Genotyped_Samples <- sapply(Genotyped_Samples,function(x) gsub(x=x,pattern = 'Batch1_',replacement = ''))
+Genotyped_Samples <- sapply(Genotyped_Samples,function(x) gsub(x=x,pattern = 'Batch2_',replacement = ''))
+
+WGS_Samples <- data.table::fread('../../data/Genotyping_WGS/TBDAR.WGS.Imputed.AnalysisReady.fam')$V2
+WGS_Samples <- WGS_Samples[sapply(WGS_Samples,function(x) grepl(pattern = 'WGS',x=x))]
+WGS_Samples <- sapply(WGS_Samples,function(x) gsub(x=x,pattern = 'WGS.Fellay.',replacement = ''))
+
+Mtb_Samples <- unique(sapply(dir('../../data/Mtb/Mtb_VCF_files/full_allpos/'),function(x) strsplit(x=x,split = '\\.')[[1]][1]))
+Metadata <- data.table::fread('../../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available.txt') %>% dplyr::select(PATIENT_ID,G_NUMBER)
+Mtb_Only <- setdiff(Mtb_Samples,Metadata$G_NUMBER)
+
+Mtb_Patient_IDs <- c(Mtb_Only,Metadata$PATIENT_ID)
+
+ggVennDiagram(list(Genotyped_Samples,WGS_Samples,Mtb_Patient_IDs),category.names = c("Host\nGenotyped","Host\nWGS",'Mtb\nWGS'))
+
+
+```
+## QC - Regenotyped
+```{r regenotyped}
+TB_DAR_Samples <- system('~/Software/bcftools query -l ../../data/Genotyping_WGS/TBDAR.WGS.Imputed.AnalysisReady.vcf.gz',intern = T)
+Patient_IDs <- sapply(TB_DAR_Samples,function(x) strsplit(x,split = '_')[[1]][2])
+Patient_IDs <- sapply(Patient_IDs,function(x) gsub(x=x,pattern = 'Fellay.',replacement = ''))
+
+Dup_IDs <- TB_DAR_Samples[which(Patient_IDs %in% Patient_IDs[duplicated(Patient_IDs)])]
+Dup_IDs_df <- data.frame(FID = Dup_IDs,IID = Dup_IDs)
+data.table::fwrite(Dup_IDs_df,'../../data/Genotyping_WGS/regenotyped.ids',sep = ' ',row.names = F,quote = F)
+system('~/Software/plink2 --bfile ../../data/Genotyping_WGS/TBDAR.WGS.Imputed.AnalysisReady --chr 1-22 --keep ../../data/Genotyping_WGS/regenotyped.ids --make-bed --out ../../data/Genotyping_WGS/TBDAR.Regenotyped')
+
+regenotyped_plink <- snpStats::read.plink('../../data/Genotyping_WGS/TBDAR.Regenotyped')
+
+WGS_Genotypes <- regenotyped_plink$genotypes[sapply(regenotyped_plink$fam$member,function(x) grepl(x=x,pattern = 'WGS')),]
+rownames(WGS_Genotypes) <- sapply(rownames(WGS_Genotypes) ,function(x) strsplit(x=x,split = '\\.')[[1]][2])
+
+H3Africa_Genotypes <- regenotyped_plink$genotypes[!sapply(regenotyped_plink$fam$member,function(x) grepl(x=x,pattern = 'WGS')),]
+H3Africa_Genotypes <- H3Africa_Genotypes[!duplicated(sapply(rownames(H3Africa_Genotypes),function(x) strsplit(x=x,split = '_')[[1]][2])),]
+rownames(H3Africa_Genotypes) <- sapply(rownames(H3Africa_Genotypes),function(x) strsplit(x=x,split = '_')[[1]][2])
+H3Africa_Genotypes <- H3Africa_Genotypes[rownames(WGS_Genotypes),]
+
+snp_comp <- snpStats::sm.compare(H3Africa_Genotypes,WGS_Genotypes,col.wise = T)
+
+sample_diff <- (snp_comp$row.wise[,'Disagree'] - snp_comp$row.wise[,'NA.disagree']) / (snp_comp$row.wise[,'Agree'] + snp_comp$row.wise[,'Disagree'] - snp_comp$row.wise[,'NA.disagree'])
+snp_diff <- (snp_comp$col.wise[,'Disagree'] - snp_comp$col.wise[,'NA.disagree']) / (snp_comp$col.wise[,'Agree'] + snp_comp$col.wise[,'Disagree'] - snp_comp$col.wise[,'NA.disagree'])
+hist(sample_diff,main = 'Discordant SNPs per Sample',xlab = 'Fraction')
+#Exclude duplicate between batch 1 and batch2. Exclude WGS Samples
+WGS_Dup_IDs <- dplyr::filter(Dup_IDs_df,grepl(x = IID,pattern = 'WGS'))
+H3Africa_Dup_IDs <- dplyr::filter(Dup_IDs_df,!grepl(x = IID,pattern = 'WGS'))
+H3Africa_Dup_IDs$Simple_ID <- sapply(H3Africa_Dup_IDs$IID,function(x) strsplit(x=x,split = '_')[[1]][2])
+
+#Find mismatch Duplicates
+mismatching_Dup_IDs <- regenotyped_plink$fam$member[sapply(regenotyped_plink$fam$member,function(x) any(sapply(names(sample_diff[sample_diff > 0.1]),function(y) grepl(x=x,pattern = y))))]
+
+```
+
+## QC - Sex Mismatch
+```{r check_sex}
+tb_dar_pheno <- data.table::fread('../../data/pheno/metadata_Sinergia_final_all_pats.txt') %>% dplyr::mutate(PATIENT_ID = as.character(PATIENT_ID))
+
+WGS_Sex_Check <- data.table::fread('../../data/WGS/WGS_Host_Data/plink.sexcheck') %>% dplyr::select(PLINK_ID=IID,SNPSEX) %>% dplyr::mutate(Source = 'WGS')
+WGS_Sex_Check$SNPSEX <- ifelse(WGS_Sex_Check$SNPSEX == 1, 'MALE','FEMALE')
+WGS_Sex_Check$PATIENT_ID <- sapply(WGS_Sex_Check$PLINK_ID,function(x) gsub(x=x,pattern = 'WGS_Fellay.',replacement = ''))
+
+Batch1_Sex_Check <- data.table::fread('../../data/Genotyping/TB_DAR_Genotyping/Batch1/Sex_Est_Table.txt') %>% dplyr::select(PATIENT_ID=`Sample ID`,SNPSEX = Gender) %>% dplyr::mutate(SNPSEX = toupper(SNPSEX),Source = 'Batch1')
+Batch1_Sex_Check$PATIENT_ID <- sapply(Batch1_Sex_Check$PATIENT_ID,function(x) strsplit(x=x,split = '-')[[1]][1])
+Batch1_Sex_Check$PATIENT_ID <- sapply(Batch1_Sex_Check$PATIENT_ID,function(x) gsub(x=x,pattern = ' V01 B1',replacement = ''))
+Batch1_Sex_Check$PLINK_ID <- paste0('Batch1_',Batch1_Sex_Check$PATIENT_ID)
+
+Batch2_Sex_Check <- data.table::fread('../../data/Genotyping/TB_DAR_Genotyping/Batch2/Sex_Est_Table.txt') %>% dplyr::select(PATIENT_ID=`Sample ID`,SNPSEX = Gender) %>% dplyr::mutate(SNPSEX = toupper(SNPSEX),Source = 'Batch2')
+Batch2_Sex_Check$PATIENT_ID <- sapply(Batch2_Sex_Check$PATIENT_ID,function(x) strsplit(x=x,split = '-')[[1]][1])
+Batch2_Sex_Check$PATIENT_ID <- sapply(Batch2_Sex_Check$PATIENT_ID,function(x) gsub(x=x,pattern = 'TZ ',replacement = ''))
+Batch2_Sex_Check$PLINK_ID <- paste0('Batch2_',Batch2_Sex_Check$PATIENT_ID)
+
+sex_comparison <- dplyr::left_join(rbind(WGS_Sex_Check,Batch1_Sex_Check,Batch2_Sex_Check),tb_dar_pheno %>% dplyr::select(patient_sex,PATIENT_ID) %>% dplyr::mutate(patient_sex = toupper(patient_sex)),by = c('PATIENT_ID'='PATIENT_ID'))
+
+sex_mismatch <- dplyr::filter(sex_comparison,SNPSEX != patient_sex & SNPSEX != 'UNKNOWN')
+
+```
+## QC - Genetic Duplicates
+```{r genetic_dup}
+king_dup_full <- data.table::fread('../../data/Genotyping_WGS/TBDAR.WGS.Imputed.AnalysisReady.kin0') %>% 
+  dplyr::filter(InfType == 'Dup/MZ') %>% dplyr::select(ID1,ID2)
+king_dup_full$ID1_Simple <- sapply(king_dup_full$ID1,function(x) gsub(x=x,pattern = 'Batch1_',replacement = ''))
+king_dup_full$ID1_Simple <- sapply(king_dup_full$ID1_Simple,function(x) gsub(x=x,pattern = 'Batch2_',replacement = ''))
+king_dup_full$ID1_Simple <- sapply(king_dup_full$ID1_Simple,function(x) gsub(x=x,pattern = 'WGS_Fellay.',replacement = ''))
+
+king_dup_full$ID2_Simple <- sapply(king_dup_full$ID2,function(x) gsub(x=x,pattern = 'Batch1_',replacement = ''))
+king_dup_full$ID2_Simple <- sapply(king_dup_full$ID2_Simple,function(x) gsub(x=x,pattern = 'Batch2_',replacement = ''))
+king_dup_full$ID2_Simple <- sapply(king_dup_full$ID2_Simple,function(x) gsub(x=x,pattern = 'WGS_Fellay.',replacement = ''))
+
+genetic_duplicates <- dplyr::filter(king_dup_full,ID1_Simple != ID2_Simple)
+
+
+```
+## QC - Relatives
+
+```{r relatives}
+relatives <- data.table::fread('../../data/Genotyping_WGS/TBDAR.WGS.Imputed.AnalysisReady.kin0') %>% 
+  dplyr::filter(InfType != 'Dup/MZ') %>% dplyr::select(ID1,ID2,InfType)
+relatives$ID1_Simple <- sapply(relatives$ID1,function(x) gsub(x=x,pattern = 'Batch1_',replacement = ''))
+relatives$ID1_Simple <- sapply(relatives$ID1_Simple,function(x) gsub(x=x,pattern = 'Batch2_',replacement = ''))
+relatives$ID1_Simple <- sapply(relatives$ID1_Simple,function(x) gsub(x=x,pattern = 'WGS_Fellay.',replacement = ''))
+
+relatives$ID2_Simple <- sapply(relatives$ID2,function(x) gsub(x=x,pattern = 'Batch1_',replacement = ''))
+relatives$ID2_Simple <- sapply(relatives$ID2_Simple,function(x) gsub(x=x,pattern = 'Batch2_',replacement = ''))
+relatives$ID2_Simple <- sapply(relatives$ID2_Simple,function(x) gsub(x=x,pattern = 'WGS_Fellay.',replacement = ''))
+
+relatives_pairs <- lapply(1:nrow(relatives),function(i) sort(c(relatives$ID1_Simple[i],relatives$ID2_Simple[i])))
+relatives_pairs <- relatives_pairs[!duplicated(relatives_pairs)]
+relatives_pairs_list <- data.frame(from = sapply(relatives_pairs,function(x) x[1]),to = sapply(relatives_pairs,function(x) x[2]))
+#Manually check to see if there are trios 
+p <- simpleNetwork(relatives_pairs_list, height="50px", width="50px")
+
+```
+## QC - PCA
+```{PCA}
+GetPCAOutliers <- function(PCA_results,target_POP){
+  pop_tbl <- data.table::fread('~/1KG_PCA/1KG_data/20130606_g1k.ped') %>% dplyr::select(ID=`Individual ID`,Population)
+  pop_info <- data.table::fread('~/1KG_PCA/1KG_data/20131219.populations.tsv') %>% dplyr::select(Population = `Population Code`,SuperPopulation = `Super Population`)
+  pop_tbl <- dplyr::left_join(pop_tbl,pop_info)
+  
+  genotyping_pca <- data.table::fread(PCA_results) %>% dplyr::select(ID=V2,PC1=V3,PC2=V4)
+  genotyping_pca <- genotyping_pca %>% dplyr::left_join(pop_tbl %>% dplyr::select(ID,SuperPopulation))
+  
+  genotyping_pca$SuperPopulation[is.na(genotyping_pca$SuperPopulation)] <- 'TARGET'
+  
+  library(class)
+  non_target_set <- genotyping_pca %>% dplyr::filter(SuperPopulation != 'TARGET' & SuperPopulation != 'AMR') %>% dplyr::select(-SuperPopulation,-ID) #Train KNN based on 1KG 
+  non_target_set_class <- genotyping_pca %>% dplyr::filter(SuperPopulation != 'TARGET' & SuperPopulation != 'AMR') %>% dplyr::select(SuperPopulation) #Labels for the Train set
+  non_target_set_class <- factor(non_target_set_class$SuperPopulation)
+  
+  train_sample <- sample(1:nrow(non_target_set),size = 0.7*nrow(non_target_set),replace = F)
+  train_set <- non_target_set[train_sample,]
+  train_set_class <- non_target_set_class[train_sample]
+  test_set <- non_target_set[-train_sample,]
+  
+  target_set <- genotyping_pca %>% dplyr::filter(SuperPopulation == 'TARGET') 
+  target_set_pred <- target_set  %>% dplyr::select(-ID,-SuperPopulation)
+  knn_test <- knn(train = train_set,test = test_set,cl=train_set_class,k=4)
+  print(glue::glue('Testing Accuracy: {sum(knn_test == non_target_set_class[-train_sample]) / length(knn_test)}'))
+  
+  knn_target <- knn(train = non_target_set,test = target_set_pred,cl=non_target_set_class,k=4) 
+  outliers <- target_set$ID[knn_target != target_POP]
+  p1 <- ggplot2::ggplot(genotyping_pca %>% dplyr::filter(SuperPopulation != 'AMR')) + aes(x=PC1,y=PC2,color = SuperPopulation) + geom_point() + ggrepel::geom_text_repel(data = genotyping_pca %>% dplyr::filter(ID %in%outliers),aes(x=PC1,y=PC2,label = ID))
+  
+  return(list(outliers=outliers,p1=p1))
+  
+}
+Genotyping_WGS_outliers <- GetPCAOutliers('../../data/Genotyping_WGS/PCA/TBDAR.WGS.Imputed.eigenvec','AFR')
+```
+
+## Sample Status - After QC
+
+```{r stats_after_QC}
+Host_Samples <- data.table::fread('../../data/Genotyping_WGS/TBDAR.WGS.Imputed.GWASReady.fam')$V2
+
+WGS_Samples <- Host_Samples[sapply(Host_Samples,function(x) grepl(pattern = 'WGS',x=x))]
+WGS_Samples <- sapply(WGS_Samples,function(x) gsub(x=x,pattern = 'WGS.Fellay.',replacement = ''))
+
+Genotyped_Samples <- Host_Samples[sapply(Host_Samples,function(x) grepl(pattern = 'Batch',x=x))]
+Genotyped_Samples <- sapply(Genotyped_Samples,function(x) gsub(x=x,pattern = 'Batch1_',replacement = ''))
+Genotyped_Samples <- sapply(Genotyped_Samples,function(x) gsub(x=x,pattern = 'Batch2_',replacement = ''))
+
+Mtb_Samples <- unique(sapply(dir('../../data/Mtb/Mtb_VCF_files/full_allpos/'),function(x) strsplit(x=x,split = '\\.')[[1]][1]))
+Metadata <- data.table::fread('../../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available.txt') %>% dplyr::select(PATIENT_ID,G_NUMBER) %>% dplyr::filter(PATIENT_ID %in% c(Genotyped_Samples,WGS_Samples))
+Mtb_Only <- setdiff(Mtb_Samples,Metadata$G_NUMBER)
+
+Mtb_Patient_IDs <- c(Mtb_Only,Metadata$PATIENT_ID)
+
+ggVennDiagram(list(Genotyped_Samples,WGS_Samples,Mtb_Patient_IDs),category.names = c("Host\nGenotyped","Host\nWGS",'Mtb\nWGS'))
+
+
+```
+## GWAS
+```{r GWAS}
+TB_Score_GWAS <- data.table::fread('~/TB_GWAS/GWAS/TB_score.TB_score.glm.linear')
+p1 <- ggman::ggman(TB_Score_GWAS %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('TB Score') + ylim(1,10) 
+
+L1_n3_GWAS <- data.table::fread('~/TB_GWAS/GWAS/PC_3/introduction.LineageL1_n3.glm.logistic.hybrid')
+L2_n1568_GWAS <- data.table::fread('~/TB_GWAS/GWAS/PC_3/introduction.LineageL2_n1568.glm.logistic.hybrid')
+L3_n1111_GWAS <- data.table::fread('~/TB_GWAS/GWAS/PC_3/introduction.LineageL3_n1111.glm.logistic.hybrid')
+L4_n296_GWAS <- data.table::fread('~/TB_GWAS/GWAS/PC_3/introduction.LineageL4_n296.glm.logistic.hybrid')
+p6 <- ggman::ggman(L1_n3_GWAS %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('L1_n3') + ylim(1,10) 
+p7 <- ggman::ggman(L2_n1568_GWAS %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('L2_n1568') + ylim(1,10) 
+p8 <- ggman::ggman(L3_n1111_GWAS %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('L3_n1111') + ylim(1,10) 
+p9 <- ggman::ggman(L4_n296_GWAS %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('L4_n296') + ylim(1,10) 
+ggpubr::ggarrange(p6,p7,p8,p9,nrow=4)
+
+
+```
+
+
+## G2G Results - Manhattan
+```{r manhattan}
+fixA_res <- data.table::fread(cmd = 'zcat ../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/fixA_Rv3029c:3388671:p.Thr67Met.fixA_Rv3029c:3388671:p.Thr67Met.glm.logistic.hybrid.gz')
+p1 <- ggman::ggman(fixA_res %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('fixA_Rv3029c:3388671:p.Thr67Met') + geom_hline(yintercept = -log10(5e-8/420),colour = 'red',linetype  = 'dashed') + ylim(1,12) 
+fixA_sig <- dplyr::filter(fixA_res,P < 5e-8/420)
+ggman::ggmanLabel(p1, labelDfm = fixA_sig, snp = "ID", label = "ID")
+GWAS.utils::QQplot(fixA_res$P,main = "fixA_Rv3029c:3388671:p.Thr67Met")
+text(paste0('Lambda=',round(GWAS.utils::genomic_inflation(P=fixA_res$P),2)),x=1,y = 8)
+
+rv2348_res <- data.table::fread(cmd = 'zcat ../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz')
+p2 <- ggman::ggman(rv2348_res %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('Rv2348c_Rv2348c:2626678:p.Ile101Met') + geom_hline(yintercept = -log10(5e-8/420),colour = 'red',linetype  = 'dashed') + ylim(1,12) 
+rv2348_sig <- dplyr::filter(rv2348_res,P < 5e-8/420)
+ggman::ggmanLabel(p2, labelDfm = rv2348_sig, snp = "ID", label = "ID")
+GWAS.utils::QQplot(rv2348_res$P,main = "Rv2348c_Rv2348c:2626678:p.Ile101Met")
+text(paste0('Lambda=',round(GWAS.utils::genomic_inflation(P=rv2348_res$P),2)),x=1,y = 8)
+
+```
+

@@ -39,5 +39,5 @@ CalcM_eff <- function(pheno_mat,method,prune_thresh = NA){
   return(M_eff)
   
 }
-M_Eff = sapply(G2G_Obj$aa_matrix_filt,function(x) CalcM_eff(x,method = 'Prune',prune_thresh = 1))
-M_Eff_full = CalcM_eff(G2G_Obj$aa_matrix_full,method = 'Prune',prune_thresh = 1)
+# M_Eff = sapply(G2G_Obj$aa_matrix_filt,function(x) CalcM_eff(x,method = 'Prune',prune_thresh = 1))
+# M_Eff_full = CalcM_eff(G2G_Obj$aa_matrix_full,method = 'Prune',prune_thresh = 1)

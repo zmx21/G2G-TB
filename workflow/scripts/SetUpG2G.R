@@ -187,9 +187,12 @@ SetUpG2G <- function(OUT_DIR,Metadata_Path,Host_PC_Path,Var_Tbl_Path,Phylo_Tree_
   aa_matrix_full <- aa_matrix[both_IDs_to_keep[['ALL']]$G_NUMBER,,drop=FALSE]
   aa_matrix_full<- aa_matrix_full[,GetMAC(aa_matrix_full) > Pathogen_MAC_AA,drop=FALSE]
   
-  
   #Filter AA Matrix, decide for each variant whether to do stratified or stratified analysis
   aa_matrix_filt <- FilterAAMatrix(aa_matrix_full,both_IDs_to_keep,MAC_Thresh = Pathogen_MAC_AA_Lineage) 
+  
+  #Filter AA Matrix based on MAC per lineage
+  aa_matrix_mac_by_lineage <- sapply(1:ncol(aa_matrix_full),function(x) max(apply(table(aa_matrix_full[,x],both_IDs_to_keep[['ALL']]$LINEAGE),2,min)))
+  aa_matrix_full <- aa_matrix_full[,aa_matrix_mac_by_lineage > Pathogen_MAC_AA]
   
   #Path to VCF file (for each lineage)
   host_path <- glue::glue("{OUT_DIR}/LINEAGE_{c(names(vir_pPCs),'ALL')}/TB_DAR_G2G")
