@@ -19,9 +19,10 @@ WriteAATable <- function(cur_file,locus_to_excl,snpEff,cur_id,out_path){
     #Remove SNPs in repetitive regions 
     system(glue::glue("bedtools subtract -header -A -a {cur_file} -b {locus_to_excl} > {DATA_DIR}/rep_filt/{cur_file_unzip}"))
     #Get SNP consequences 
-    cur_table <- system(glue::glue("java -jar {snpEff} extractFields {DATA_DIR}/rep_filt/{cur_file_unzip} POS REF ALT ANN[{cnt}].EFFECT ANN[{cnt}].GENE EFF[{cnt}].AA GEN[0].GT > {DATA_DIR}{cur_file_unzip}.tbl"),intern = T)
+    cur_table <- system(glue::glue("java -jar {snpEff} extractFields {DATA_DIR}/rep_filt/{cur_file_unzip} POS REF ALT ANN[{cnt}].EFFECT ANN[{cnt}].GENE EFF[{cnt}].AA GEN[0].GT GEN[0].FREQ> {DATA_DIR}{cur_file_unzip}.tbl"),intern = T)
     cur_table_parsed <- data.table::fread(glue::glue("{DATA_DIR}{cur_file_unzip}.tbl"),sep = '\t',fill = F)
-    colnames(cur_table_parsed) <- c('POS','REF','ALT','EFFECT','GENE','AA_Change','GENOTYPE')
+    colnames(cur_table_parsed) <- c('POS','REF','ALT','EFFECT','GENE','AA_Change','GENOTYPE','FREQ')
+    cur_table_parsed$FREQ <- sapply(cur_table_parsed$FREQ,function(x) as.numeric(gsub(x=x,pattern = '%',replacement = '')))
     #End loop if there are no longer have any frames to search on. 
     if(!all(is.na(cur_table_parsed$EFFECT))){
       cnt <- cnt + 1
@@ -60,9 +61,11 @@ WriteNucTableSyn <- function(cur_file,locus_to_excl,snpEff,cur_id,out_path){
     #Remove SNPs in repetitive regions 
     system(glue::glue("bedtools subtract -header -A -a {cur_file} -b {locus_to_excl} > {DATA_DIR}/rep_filt/{cur_file_unzip}"))
     #Get SNP consequences 
-    cur_table <- system(glue::glue("java -jar {snpEff} extractFields {DATA_DIR}/rep_filt/{cur_file_unzip} POS REF ALT ANN[{cnt}].EFFECT ANN[{cnt}].GENE GEN[0].GT > {DATA_DIR}{cur_file_unzip}.tbl"),intern = T)
+    cur_table <- system(glue::glue("java -jar {snpEff} extractFields {DATA_DIR}/rep_filt/{cur_file_unzip} POS REF ALT ANN[{cnt}].EFFECT ANN[{cnt}].GENE GEN[0].GT GEN[0].FREQ > {DATA_DIR}{cur_file_unzip}.tbl"),intern = T)
     cur_table_parsed <- data.table::fread(glue::glue("{DATA_DIR}{cur_file_unzip}.tbl"),sep = '\t',fill = F)
-    colnames(cur_table_parsed) <- c('POS','REF','ALT','EFFECT','GENE','GENOTYPE')
+    colnames(cur_table_parsed) <- c('POS','REF','ALT','EFFECT','GENE','GENOTYPE','FREQ')
+    cur_table_parsed$FREQ <- sapply(cur_table_parsed$FREQ,function(x) as.numeric(gsub(x=x,pattern = '%',replacement = '')))
+    
     #End loop if there are no longer have any frames to search on. 
     if(!all(is.na(cur_table_parsed$EFFECT))){
       cnt <- cnt + 1

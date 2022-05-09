@@ -8,11 +8,12 @@ Mtb_IDS = Sample_File["G_NUMBER"].tolist()
 if config["Analysis_Type"] == "G2G":
   rule all:
     input:
-      results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+'/'+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/G2G_results.rds"
+      results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"])+'/'+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/G2G_results.rds"
+      
 elif config["Analysis_Type"] == "TB_score" or config["Analysis_Type"] == "Xray_score":
   rule all:
     input:
-      results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"/"+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/"+config["Analysis_Type"]+"_int_results.rds"
+      results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"])+"/"+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/"+config["Analysis_Type"]+"_int_results.rds"
     
 rule process_mtb_VCF:
   input:
@@ -134,15 +135,16 @@ rule make_AA_Matrix:
     IS_SIFT=bool(strtobool(config["SIFT"])),
     IS_Burden=bool(strtobool(config["Burden"])),
     IS_Deletion=bool(strtobool(config["Deletion"])),
+    Het_Thresh=config["Het_Thresh"],
     metadata=config["Metdata"]
   output:
-    Mtb_Var_Tbl=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"/Mtb_Var_Tbl.rds",
+    Mtb_Var_Tbl=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"])+"/Mtb_Var_Tbl.rds"
   threads: 
     50
   conda:
     '../envs/Mtb_Processing.yaml'
   shell:
-    "Rscript ./scripts/MakeVariantMatrix.R {input.AA_variant} {input.Syn_variant} {input.missing_mat} {input.phylo_snps} {input.del_tbl} {input.sift_path} {params.IS_SIFT} {params.IS_Burden} {params.IS_Deletion} {output.Mtb_Var_Tbl} {params.metadata} {threads}"
+    "Rscript ./scripts/MakeVariantMatrix.R {input.AA_variant} {input.Syn_variant} {input.missing_mat} {input.phylo_snps} {input.del_tbl} {input.sift_path} {params.IS_SIFT} {params.IS_Burden} {params.IS_Deletion} {output.Mtb_Var_Tbl} {params.metadata} {params.Het_Thresh} {threads}"
     
 def merged_dosage_path(wildcards):
   # return homo SNPs only
@@ -173,21 +175,21 @@ rule setup_host:
     
 rule setup_G2G:
   input:
-    Mtb_Var_Tbl=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"/Mtb_Var_Tbl.rds",
+    Mtb_Var_Tbl=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"])+"/Mtb_Var_Tbl.rds",
     merged_dosage=merged_dosage_path,
     host_bfile=config["host_bfile"]+'.bed',
     host_pc=config["SCRATCH_DIR"]+"Host/TB_DAR_GWAS_PCA.eigenvec"
   params:
     metadata=config["Metdata"],
     Phylo_Tree_Path=config["MTB_DATA"]+'RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
-    Out_DIR=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"],
+    Out_DIR=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"]),
     Host_MAF=config["Host_MAF"],
     Pathogen_MAC_pPCA=config["Pathogen_MAC_pPCA"],
     Pathogen_MAC_AA_Lineage = config["Pathogen_MAC_AA_Lineage"],
     Pathogen_MAC_AA=config["Pathogen_MAC_AA"],
     Host_Files=config["SCRATCH_DIR"]+"Host/"
   output:
-    config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"/G2G_Obj.rds"
+    config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"])+"/G2G_Obj.rds"
   threads:
     50
   conda:
@@ -198,7 +200,7 @@ rule setup_G2G:
 if config["Analysis_Type"] == "G2G":
   rule run_G2G:
     input:
-      g2g_obj=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"/G2G_Obj.rds"
+      g2g_obj=config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"])+"/G2G_Obj.rds"
     params:
       tool=config["tool"],
       N_PC=config["N_PC"],
@@ -208,7 +210,7 @@ if config["Analysis_Type"] == "G2G":
       homo_only=config["Homo_Only"],
       out_dir=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]
     output:
-      results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+'/'+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/G2G_results.rds"
+      results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"])+'/'+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/G2G_results.rds"
     threads:
       110
     conda:

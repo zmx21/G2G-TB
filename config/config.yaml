@@ -16,7 +16,9 @@ Deletion: 'False'
 Stratified: 'False'
 Analysis_Type: 'G2G' #G2G or xrayscore
 Homo_Only: 'False'
+Het_Thresh: 50 #Percent reads supporting ALT, in percentage
 tool: 'PLINK'
+
 
 #Pathogen Settings
 Pathogen_MAC_pPCA: 15

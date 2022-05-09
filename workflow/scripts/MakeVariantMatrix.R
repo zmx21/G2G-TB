@@ -32,7 +32,7 @@ RemoveStratVariants <- function(AA_Matrix,Lineage_Df){
 }
 
 #Merge AA table of each Mtb sequence into a matrix
-AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_thresh = 0.1,n_cores = 10,missing_matrix){
+AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_thresh = 0.1,het_thresh = het_thresh,n_cores = 10,missing_matrix){
   if(!is.null(sift_table)){
     sift_excl <- dplyr::filter(sift_table,SIFT_score > sift_thresh) %>% dplyr::select(POS = `#Position`,REF=Ref_allele,ALT=New_allele) %>% dplyr::filter(REF != ALT)
   }
@@ -55,7 +55,7 @@ AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_
     if(!is.null(sift_table)){
       tbl <- dplyr::anti_join(tbl,sift_excl,by=c('POS'='POS','REF'='REF','ALT'='ALT'))
     }
-    return(data.frame(ID = paste0(tbl$GENE,':',tbl$POS,':',tbl$AA_Change),Genotype = ifelse(tbl$GENOTYPE=='1/1',2,1))) #Homozygotes as 2, heterzygotes (mixed calls) as 1
+    return(data.frame(ID = paste0(tbl$GENE,':',tbl$POS,':',tbl$AA_Change),Genotype = ifelse(tbl$GENOTYPE=='1/1',2,ifelse(tbl$GENOTYPE!='1/1' & tbl$FREQ > het_thresh,1,0)))) #Homozygotes as 2, heterzygotes (mixed calls) as 1
   },mc.cores = n_cores)
   names(all_variants) <- all_sample_ids
   
@@ -85,7 +85,7 @@ AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_
 }
 
 #Merge Synonymous Nuc table of each Mtb sequence into a matrix
-NucSynTblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,missing_matrix,n_cores = n_cores){
+NucSynTblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,missing_matrix,het_thresh=het_thresh,n_cores = n_cores){
   #Parse all sample IDs
   all_sample_ids <- sapply(AA_Tbl_Files,function(x) strsplit(x=x,split = '/')[[1]][length(strsplit(x=x,split = '/')[[1]])])
   all_sample_ids <- sapply(all_sample_ids,function(x) gsub(pattern = '.txt',replacement = '',x=x))
@@ -101,7 +101,7 @@ NucSynTblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,missing_matrix,n_co
       tbl <- dplyr::anti_join(tbl,phylo_snps,by=c('POS'='POS','REF'='REF','ALT'='ALT'))
     }
     
-    return(data.frame(ID = paste0(tbl$GENE,':',tbl$POS,':',tbl$REF,'>',tbl$ALT),Genotype = ifelse(tbl$GENOTYPE=='1/1',2,1)))
+    return(data.frame(ID = paste0(tbl$GENE,':',tbl$POS,':',tbl$REF,'>',tbl$ALT),Genotype = ifelse(tbl$GENOTYPE=='1/1',2,ifelse(tbl$GENOTYPE!='1/1' & tbl$FREQ > het_thresh,1,0))))
   },mc.cores = n_cores)
   names(all_variants) <- all_sample_ids
   
@@ -188,21 +188,22 @@ IS_Burden <- as.logical(params[[6]])
 IS_Deletion <- as.logical(params[[7]])
 out_path <- params[[8]]
 metadata <- data.table::fread(params[[9]])
-n_cores <- as.numeric(params[[10]])
+het_thresh = as.numeric(params[[10]])
+n_cores <- as.numeric(params[[11]])
 
-
-# missing_mat <- readRDS('../scratch/Mtb_Coverage/missing_mat.rds')
+# missing_mat <- readRDS('../scratch/Mtb_Coverage/HomoOnly_True/missing_mat.rds')
 # phylo_snps <- '../data/Mtb/PositionsPhylogeneticSNPs_20171004.txt'
-# del_tbl <- '../data/Mtb/binary_table_genes_combined_genomes_022021.txt'
+# del_tbl <- data.table::fread('../data/Mtb/binary_table_genes_Sinergia_final_dataset_human_bac_genome_available.txt')
 # sift_path <- '../data/Mtb/SIFT/GCA_000195955.2.22/Chromosome.gz'
 # IS_SIFT <- F
 # IS_Burden <- T
-# IS_Deletion <- F
+# IS_Deletion <- T
 # out_path <- '../scratch//Mtb_Var_Tbl.rds'
 # metadata <- data.table::fread('../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt')
 # n_cores <- 1
-# AA_variant_files <- paste0('../scratch/AA_HomoOnly_True/',metadata$G_NUMBER,'.txt') 
-# Syn_variant_files <- paste0('../scratch/Syn_HomoOnly_True/',metadata$G_NUMBER,'.txt') 
+# het_thresh <- 10
+# AA_variant_files <- paste0('../scratch/AA_HomoOnly_True/',metadata$G_NUMBER,'.txt')
+# Syn_variant_files <- paste0('../scratch/Syn_HomoOnly_True/',metadata$G_NUMBER,'.txt')
 
 
 if(is.na(IS_SIFT) | is.na(IS_Burden) | is.na(IS_Deletion)){
@@ -214,7 +215,7 @@ phylo_snps <- data.table::fread(phylo_snps) %>%
 
 if(!IS_Burden){
   #Convert AA Tables into a Matrix
-  AA_Matrix <- AATblToMatrix(AA_Tbl_Files = AA_variant_files,phylo_snps=phylo_snps,missing_matrix=missing_mat,n_cores = n_cores)
+  AA_Matrix <- AATblToMatrix(AA_Tbl_Files = AA_variant_files,phylo_snps=phylo_snps,missing_matrix=missing_mat,het_thresh = het_thresh,n_cores = n_cores)
   #Add deleted genes as variants
   if(IS_Deletion){
     del_matrix <- as.matrix(del_tbl[,-c('GNUMBER','LINEAGE','NUMBER_OF_DELETED_GENES')])
@@ -226,17 +227,17 @@ if(!IS_Burden){
     rownames(matrix_to_append) <- rownames(AA_Matrix)
     colnames(matrix_to_append) <- colnames(del_matrix)
     
-    matrix_to_append[del_tbl$GNUMBER,] <- del_matrix
+    matrix_to_append <- del_matrix[rownames(AA_Matrix),]
     AA_Matrix <- cbind(AA_Matrix,matrix_to_append)
   }
 }else if(IS_Burden){
   if(IS_SIFT){
     sift_table <- data.table::fread(cmd = glue::glue("zcat {sift_path}"))
-    AA_Matrix_NonSyn <- AATblToMatrix(AA_Tbl_Files = AA_variant_files,phylo_snps=phylo_snps,sift_table = sift_table,missing_matrix=missing_mat,n_cores = n_cores)
+    AA_Matrix_NonSyn <- AATblToMatrix(AA_Tbl_Files = AA_variant_files,phylo_snps=phylo_snps,sift_table = sift_table,missing_matrix=missing_mat,het_thresh = het_thresh,n_cores = n_cores)
   }else{
-    AA_Matrix_NonSyn <- AATblToMatrix(AA_Tbl_Files = AA_variant_files,phylo_snps=phylo_snps,missing_matrix=missing_mat,n_cores = n_cores)
+    AA_Matrix_NonSyn <- AATblToMatrix(AA_Tbl_Files = AA_variant_files,phylo_snps=phylo_snps,missing_matrix=missing_mat,het_thresh = het_thresh,n_cores = n_cores)
   }
-  AA_Matrix_Syn <- NucSynTblToMatrix(AA_Tbl_Files = Syn_variant_files,phylo_snps=phylo_snps,missing_matrix = missing_mat,n_cores = n_cores)
+  AA_Matrix_Syn <- NucSynTblToMatrix(AA_Tbl_Files = Syn_variant_files,phylo_snps=phylo_snps,missing_matrix = missing_mat,het_thresh = het_thresh,n_cores = n_cores)
   if(IS_Deletion){
     del_matrix <- as.matrix(del_tbl[,-c('GNUMBER','LINEAGE','NUMBER_OF_DELETED_GENES')])
     del_matrix[del_matrix==1] <- 2 #Set all deletions as Homo calls
@@ -248,7 +249,7 @@ if(!IS_Burden){
     rownames(matrix_to_append) <- rownames(AA_Matrix_NonSyn)
     colnames(matrix_to_append) <- colnames(del_matrix)
     
-    matrix_to_append[del_tbl$GNUMBER,] <- del_matrix
+    matrix_to_append <- del_matrix[rownames(AA_Matrix_NonSyn),]
     AA_Matrix_NonSyn <- cbind(AA_Matrix_NonSyn,matrix_to_append)
   }
   Gene_Burden <- GetGeneBurden(AA_Matrix = AA_Matrix_NonSyn,AA_Matrix_Syn = AA_Matrix_Syn,metadata=metadata)
