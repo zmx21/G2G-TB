@@ -191,7 +191,9 @@ SetUpG2G <- function(OUT_DIR,Metadata_Path,Host_PC_Path,Var_Tbl_Path,Phylo_Tree_
   aa_matrix_filt <- FilterAAMatrix(aa_matrix_full,both_IDs_to_keep,MAC_Thresh = Pathogen_MAC_AA_Lineage) 
   
   #Filter AA Matrix based on MAC per lineage
-  aa_matrix_mac_by_lineage <- sapply(1:ncol(aa_matrix_full),function(x) max(apply(table(aa_matrix_full[,x],both_IDs_to_keep[['ALL']]$LINEAGE),2,min)))
+  # aa_matrix_mac_by_lineage <- sapply(1:ncol(aa_matrix_full),function(x) max(apply(table(aa_matrix_full[,x],both_IDs_to_keep[['ALL']]$LINEAGE),2,min)))
+  aa_matrix_mac_by_lineage <- sapply(1:ncol(aa_matrix_full),function(x) max(sapply(unique(both_IDs_to_keep[['ALL']]$LINEAGE),
+                                                                                   function(y) GetMAC(aa_matrix_full[both_IDs_to_keep[['ALL']]$LINEAGE == y,x,drop=F]))))
   aa_matrix_full <- aa_matrix_full[,aa_matrix_mac_by_lineage > Pathogen_MAC_AA]
   
   #Path to VCF file (for each lineage)
@@ -235,16 +237,16 @@ BFILE_Path <- gsub(args[[11]],pattern = '.bed',replacement = '')
 Host_Files <- args[[12]]
 n_cores <- as.numeric(args[[13]])
 
-# OUT_DIR <- '../../results/Burden_True_SIFT_True_Del_False_HomoOnly_True/'
+# OUT_DIR <- '../../results/Burden_False_SIFT_False_Del_False_HomoOnly_False_HetThresh_50/'
 # Metadata_Path <- '../../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt'
 # Host_PC_Path <- '../../scratch/Host/TB_DAR_GWAS_PCA.eigenvec'
-# Var_Tbl_Path <- '../../scratch/Burden_True_SIFT_True_Del_False_HomoOnly_True/Mtb_Var_Tbl.rds'
+# Var_Tbl_Path <- '../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_False_HetThresh_50/Mtb_Var_Tbl.rds'
 # Phylo_Tree_Path <- '../../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk'
 # Mtb_Nuc_Out <- '../../data/Mtb/merged/merged.var.homo.SNPs.vcf.dosage'
 # Host_MAF <- 0.05
-# Pathogen_MAC_pPCA <- 10
-# Pathogen_MAC_AA_Lineage <- 10
-# Pathogen_MAC_AA <- 10
+# Pathogen_MAC_pPCA <- 15
+# Pathogen_MAC_AA_Lineage <- 15
+# Pathogen_MAC_AA <- 15
 # BFILE_Path <- '../../data/Genotyping_WGS/TBDAR.WGS.Imputed.GWASReady'
 # Host_Files <- '../../scratch/Host/'
 # n_cores <- 1

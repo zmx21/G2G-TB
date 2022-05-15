@@ -32,9 +32,10 @@ RemoveStratVariants <- function(AA_Matrix,Lineage_Df){
 }
 
 #Merge AA table of each Mtb sequence into a matrix
-AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_thresh = 0.1,het_thresh = het_thresh,n_cores = 10,missing_matrix){
+AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_thresh = 0.05,het_thresh = het_thresh,n_cores = 10,missing_matrix){
   if(!is.null(sift_table)){
-    sift_excl <- dplyr::filter(sift_table,SIFT_score > sift_thresh) %>% dplyr::select(POS = `#Position`,REF=Ref_allele,ALT=New_allele) %>% dplyr::filter(REF != ALT)
+    #Include SNPs with SIFT score < threshold (Deleterious)
+    sift_incl <- dplyr::filter(sift_table,SIFT_score > sift_thresh) %>% dplyr::select(POS = `#Position`,REF=Ref_allele,ALT=New_allele) %>% dplyr::filter(REF != ALT)
   }
   #Parse all sample IDs
   all_sample_ids <- sapply(AA_Tbl_Files,function(x) strsplit(x=x,split = '/')[[1]][length(strsplit(x=x,split = '/')[[1]])])
@@ -53,7 +54,7 @@ AATblToMatrix <- function(AA_Tbl_Files,phylo_snps = NULL,sift_table = NULL,sift_
       tbl <- dplyr::anti_join(tbl,phylo_snps,by=c('POS'='POS','REF'='REF','ALT'='ALT'))
     }
     if(!is.null(sift_table)){
-      tbl <- dplyr::anti_join(tbl,sift_excl,by=c('POS'='POS','REF'='REF','ALT'='ALT'))
+      tbl <- dplyr::inner_join(tbl,sift_incl,by=c('POS'='POS','REF'='REF','ALT'='ALT'))
     }
     return(data.frame(ID = paste0(tbl$GENE,':',tbl$POS,':',tbl$AA_Change),Genotype = ifelse(tbl$GENOTYPE=='1/1',2,ifelse(tbl$GENOTYPE!='1/1' & tbl$FREQ > het_thresh,1,0)))) #Homozygotes as 2, heterzygotes (mixed calls) as 1
   },mc.cores = n_cores)
@@ -195,7 +196,7 @@ n_cores <- as.numeric(params[[11]])
 # phylo_snps <- '../data/Mtb/PositionsPhylogeneticSNPs_20171004.txt'
 # del_tbl <- data.table::fread('../data/Mtb/binary_table_genes_Sinergia_final_dataset_human_bac_genome_available.txt')
 # sift_path <- '../data/Mtb/SIFT/GCA_000195955.2.22/Chromosome.gz'
-# IS_SIFT <- F
+# IS_SIFT <- T
 # IS_Burden <- T
 # IS_Deletion <- T
 # out_path <- '../scratch//Mtb_Var_Tbl.rds'
