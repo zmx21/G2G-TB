@@ -15,15 +15,15 @@ Burden: 'False'
 Deletion: 'False'
 Stratified: 'False'
 Analysis_Type: 'G2G' #G2G or xrayscore
-Homo_Only: 'False'
-Het_Thresh: 50 #Percent reads supporting ALT, in percentage
+Homo_Only: 'True'
+Het_Thresh: 10 #Percent reads supporting ALT, in percentage
 tool: 'PLINK'
-
 
 #Pathogen Settings
 Pathogen_MAC_pPCA: 15
 Pathogen_MAC_AA_Lineage: 15
 Pathogen_MAC_AA: 15
+Pathogen_Missing: 0.05
 N_pPC: 0
 
 #Host Settings

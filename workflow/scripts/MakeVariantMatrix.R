@@ -149,7 +149,7 @@ GetGeneBurden <- function(AA_Matrix,AA_Matrix_Syn,metadata){
   
   for(i in 1:length(non_syn_genes_uniq)){
     cur_gene <- non_syn_genes_uniq[i]
-    cur_burden <- apply(AA_Matrix[,dplyr::filter(non_syn_variant_df,Gene == cur_gene)$SNP,drop = F],1,function(x) sum(x != 0,na.rm = F))
+    cur_burden <- apply(AA_Matrix[,dplyr::filter(non_syn_variant_df,Gene == cur_gene)$SNP,drop = F],1,function(x) sum(x != 0,na.rm = T))
     non_syn_burden[,i] <- cur_burden
   }
   
@@ -198,7 +198,7 @@ n_cores <- as.numeric(params[[11]])
 # sift_path <- '../data/Mtb/SIFT/GCA_000195955.2.22/Chromosome.gz'
 # IS_SIFT <- T
 # IS_Burden <- T
-# IS_Deletion <- T
+# IS_Deletion <- F
 # out_path <- '../scratch//Mtb_Var_Tbl.rds'
 # metadata <- data.table::fread('../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt')
 # n_cores <- 1
@@ -223,11 +223,11 @@ if(!IS_Burden){
     del_matrix[del_matrix==1] <- 2 #Set all deletions as Homo calls
     colnames(del_matrix) <- paste0(colnames(del_matrix),':NA:del')
     rownames(del_matrix) <- del_tbl$GNUMBER
-    
+
     matrix_to_append <- matrix(NA,nrow = nrow(AA_Matrix),ncol = ncol(del_matrix))
     rownames(matrix_to_append) <- rownames(AA_Matrix)
     colnames(matrix_to_append) <- colnames(del_matrix)
-    
+
     matrix_to_append <- del_matrix[rownames(AA_Matrix),]
     AA_Matrix <- cbind(AA_Matrix,matrix_to_append)
   }
@@ -242,19 +242,19 @@ if(!IS_Burden){
   if(IS_Deletion){
     del_matrix <- as.matrix(del_tbl[,-c('GNUMBER','LINEAGE','NUMBER_OF_DELETED_GENES')])
     del_matrix[del_matrix==1] <- 2 #Set all deletions as Homo calls
-    
+
     colnames(del_matrix) <- paste0(colnames(del_matrix),':NA:del')
     rownames(del_matrix) <- del_tbl$GNUMBER
-    
+
     matrix_to_append <- matrix(NA,nrow = nrow(AA_Matrix_NonSyn),ncol = ncol(del_matrix))
     rownames(matrix_to_append) <- rownames(AA_Matrix_NonSyn)
     colnames(matrix_to_append) <- colnames(del_matrix)
-    
+
     matrix_to_append <- del_matrix[rownames(AA_Matrix_NonSyn),]
     AA_Matrix_NonSyn <- cbind(AA_Matrix_NonSyn,matrix_to_append)
   }
   Gene_Burden <- GetGeneBurden(AA_Matrix = AA_Matrix_NonSyn,AA_Matrix_Syn = AA_Matrix_Syn,metadata=metadata)
   AA_Matrix <- Gene_Burden
-  
+
 }
 saveRDS(AA_Matrix,file = out_path)

@@ -221,5 +221,13 @@ ggman::ggmanLabel(p2, labelDfm = rv2348_sig, snp = "ID", label = "ID")
 GWAS.utils::QQplot(rv2348_res$P,main = "Rv2348c_Rv2348c:2626678:p.Ile101Met")
 text(paste0('Lambda=',round(GWAS.utils::genomic_inflation(P=rv2348_res$P),2)),x=1,y = 8)
 
+
+rv1149_res <- data.table::fread(cmd = 'zcat ../../results/Burden_True_SIFT_True_Del_True_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv1149_Rv1149.Rv1149_Rv1149.glm.logistic.hybrid.gz')
+p2 <- ggman::ggman(rv1149_res %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('Rv1149_Rv1149') + geom_hline(yintercept = -log10(5e-8/420),colour = 'red',linetype  = 'dashed') + ylim(1,14) 
+rv1149_sig <- dplyr::filter(rv1149_res,P < 5e-8/420)
+ggman::ggmanLabel(p2, labelDfm = rv1149_sig, snp = "ID", label = "ID")
+GWAS.utils::QQplot(rv1149_res$P,main = "Rv1149_Rv1149")
+text(paste0('Lambda=',round(GWAS.utils::genomic_inflation(P=rv1149_res$P),2)),x=1,y = 8)
+
 ```
 

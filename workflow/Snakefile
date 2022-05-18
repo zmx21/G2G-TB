@@ -14,7 +14,8 @@ elif config["Analysis_Type"] == "TB_score" or config["Analysis_Type"] == "Xray_s
   rule all:
     input:
       results=config["RESULTS_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"])+"/"+config["tool"]+"/PC_"+str(config["N_PC"])+"_pPC_"+str(config["N_pPC"])+"/Stratified_"+config["Stratified"]+"/"+config["Analysis_Type"]+"_int_results.rds"
-    
+
+
 rule process_mtb_VCF:
   input:
     VCF_file=config["MTB_DATA"]+'Mtb_VCF_files/full_allpos/{id}.all.pos.vcf.gz'
@@ -187,6 +188,7 @@ rule setup_G2G:
     Pathogen_MAC_pPCA=config["Pathogen_MAC_pPCA"],
     Pathogen_MAC_AA_Lineage = config["Pathogen_MAC_AA_Lineage"],
     Pathogen_MAC_AA=config["Pathogen_MAC_AA"],
+    Pathogen_Missing=config["Pathogen_Missing"],
     Host_Files=config["SCRATCH_DIR"]+"Host/"
   output:
     config["SCRATCH_DIR"]+"Burden_"+config["Burden"]+"_SIFT_"+config["SIFT"]+"_Del_"+config["Deletion"]+"_HomoOnly_"+config["Homo_Only"]+"_HetThresh_"+str(config["Het_Thresh"])+"/G2G_Obj.rds"
@@ -195,7 +197,7 @@ rule setup_G2G:
   conda:
     '../envs/Host_Processing.yaml'
   shell:
-    "Rscript ./scripts/SetUpG2G.R {params.Out_DIR} {params.metadata} {input.host_pc} {input.Mtb_Var_Tbl} {params.Phylo_Tree_Path} {input.merged_dosage} {params.Host_MAF} {params.Pathogen_MAC_pPCA} {params.Pathogen_MAC_AA_Lineage} {params.Pathogen_MAC_AA} {input.host_bfile} {params.Host_Files} {threads}"
+    "Rscript ./scripts/SetUpG2G.R {params.Out_DIR} {params.metadata} {input.host_pc} {input.Mtb_Var_Tbl} {params.Phylo_Tree_Path} {input.merged_dosage} {params.Host_MAF} {params.Pathogen_MAC_pPCA} {params.Pathogen_MAC_AA_Lineage} {params.Pathogen_MAC_AA} {params.Pathogen_Missing} {input.host_bfile} {params.Host_Files} {threads}"
 
 if config["Analysis_Type"] == "G2G":
   rule run_G2G:

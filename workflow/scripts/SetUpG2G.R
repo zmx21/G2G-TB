@@ -96,7 +96,7 @@ FilterAAMatrix <- function(AA_Matrix,Lineage_Df,MAC_Thresh){
   return(AA_Matrix_filt_by_lineage)
 }
 
-SetUpG2G <- function(OUT_DIR,Metadata_Path,Host_PC_Path,Var_Tbl_Path,Phylo_Tree_Path,Mtb_Nuc_Out,Host_MAF,Pathogen_MAC_pPCA,Pathogen_MAC_AA_Lineage,Pathogen_MAC_AA,BFILE_Path,Host_Files,n_cores){
+SetUpG2G <- function(OUT_DIR,Metadata_Path,Host_PC_Path,Var_Tbl_Path,Phylo_Tree_Path,Mtb_Nuc_Out,Host_MAF,Pathogen_MAC_pPCA,Pathogen_MAC_AA_Lineage,Pathogen_MAC_AA,Pathogen_Missing,BFILE_Path,Host_Files,n_cores){
 
   #Get metadata file
   parsed_mapping <- data.table::fread(Metadata_Path) %>% dplyr::select(PATIENT_ID,G_NUMBER,LINEAGE=Lineage)
@@ -187,6 +187,11 @@ SetUpG2G <- function(OUT_DIR,Metadata_Path,Host_PC_Path,Var_Tbl_Path,Phylo_Tree_
   aa_matrix_full <- aa_matrix[both_IDs_to_keep[['ALL']]$G_NUMBER,,drop=FALSE]
   aa_matrix_full<- aa_matrix_full[,GetMAC(aa_matrix_full) > Pathogen_MAC_AA,drop=FALSE]
   
+  #Filter by missingness
+  aa_missingness <- apply(aa_matrix_full,2,function(x) sum(is.na(x)) / nrow(aa_matrix_full))
+  aa_matrix_full<- aa_matrix_full[,aa_missingness < Pathogen_Missing,drop=FALSE]
+  
+  
   #Filter AA Matrix, decide for each variant whether to do stratified or stratified analysis
   aa_matrix_filt <- FilterAAMatrix(aa_matrix_full,both_IDs_to_keep,MAC_Thresh = Pathogen_MAC_AA_Lineage) 
   
@@ -233,23 +238,25 @@ Host_MAF <- as.numeric(args[[7]])
 Pathogen_MAC_pPCA <- as.numeric(args[[8]])
 Pathogen_MAC_AA_Lineage <- as.numeric(args[[9]])
 Pathogen_MAC_AA <- as.numeric(args[[10]])
-BFILE_Path <- gsub(args[[11]],pattern = '.bed',replacement = '')
-Host_Files <- args[[12]]
-n_cores <- as.numeric(args[[13]])
+Pathogen_Missing <- as.numeric(args[[11]])
+BFILE_Path <- gsub(args[[12]],pattern = '.bed',replacement = '')
+Host_Files <- args[[13]]
+n_cores <- as.numeric(args[[14]])
 
-# OUT_DIR <- '../../results/Burden_False_SIFT_False_Del_False_HomoOnly_False_HetThresh_50/'
+# OUT_DIR <- '../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/'
 # Metadata_Path <- '../../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt'
 # Host_PC_Path <- '../../scratch/Host/TB_DAR_GWAS_PCA.eigenvec'
-# Var_Tbl_Path <- '../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_False_HetThresh_50/Mtb_Var_Tbl.rds'
+# Var_Tbl_Path <- '../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/Mtb_Var_Tbl.rds'
 # Phylo_Tree_Path <- '../../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk'
 # Mtb_Nuc_Out <- '../../data/Mtb/merged/merged.var.homo.SNPs.vcf.dosage'
 # Host_MAF <- 0.05
 # Pathogen_MAC_pPCA <- 15
 # Pathogen_MAC_AA_Lineage <- 15
 # Pathogen_MAC_AA <- 15
+# Pathogen_Missing <- 0.05
 # BFILE_Path <- '../../data/Genotyping_WGS/TBDAR.WGS.Imputed.GWASReady'
 # Host_Files <- '../../scratch/Host/'
 # n_cores <- 1
 
-G2G_Obj <- SetUpG2G(OUT_DIR=OUT_DIR,Metadata_Path=Metadata_Path,Host_PC_Path=Host_PC_Path,Var_Tbl_Path=Var_Tbl_Path,Phylo_Tree_Path=Phylo_Tree_Path,Mtb_Nuc_Out=Mtb_Nuc_Out,Host_MAF=Host_MAF,Pathogen_MAC_pPCA=Pathogen_MAC_pPCA,Pathogen_MAC_AA_Lineage=Pathogen_MAC_AA_Lineage,Pathogen_MAC_AA=Pathogen_MAC_AA,BFILE_Path=BFILE_Path,Host_Files=Host_Files,n_cores=n_cores)
+G2G_Obj <- SetUpG2G(OUT_DIR=OUT_DIR,Metadata_Path=Metadata_Path,Host_PC_Path=Host_PC_Path,Var_Tbl_Path=Var_Tbl_Path,Phylo_Tree_Path=Phylo_Tree_Path,Mtb_Nuc_Out=Mtb_Nuc_Out,Host_MAF=Host_MAF,Pathogen_MAC_pPCA=Pathogen_MAC_pPCA,Pathogen_MAC_AA_Lineage=Pathogen_MAC_AA_Lineage,Pathogen_MAC_AA=Pathogen_MAC_AA,Pathogen_Missing=Pathogen_Missing,BFILE_Path=BFILE_Path,Host_Files=Host_Files,n_cores=n_cores)
 saveRDS(G2G_Obj,glue::glue("{OUT_DIR}/G2G_Obj.rds"))
