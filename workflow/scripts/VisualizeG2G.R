@@ -3,7 +3,7 @@ library(RColorBrewer)
 library(ggplot2)
 library(ape)
 
-VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path){
+VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path,sublineage_only = T,tips_to_excl = c()){
   host_genotype <- snpStats::read.plink(bed = G2G_Obj$host_path[lineage],select.snps = host_snp)
   host_dosage <- as(host_genotype$genotypes, Class = 'numeric')
   host_dosage_ordered <- host_dosage[match(G2G_Obj$both_IDs_to_keep[[lineage]]$FAM_ID,rownames(host_dosage)),]
@@ -17,9 +17,18 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path)
   
   metadata <- data.frame(ID = rownames(pathogen_dosage_ordered),Host_SNP = host_dosage_ordered)
   rownames(metadata) <- metadata$ID
-  tree <- ape::read.tree(phylotree)
-  tree_filt <- ape::keep.tip(tree,rownames(pathogen_dosage_ordered))
+  pathogen_data <- data.table::fread('../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt')
+  sublineage <- dplyr::filter(pathogen_data,G_NUMBER %in% rownames(pathogen_dosage_ordered)[pathogen_dosage_ordered!=0]) %>% dplyr::select(Sublineage)
+  uniq_sublineage <- unique(sublineage$Sublineage)
   
+  tree <- ape::read.tree(phylotree)
+  if(sublineage_only){
+    strains_to_keep <- dplyr::filter(pathogen_data,Sublineage %in% uniq_sublineage)
+    tree_filt <- ape::keep.tip(tree,strains_to_keep$G_NUMBER)
+  }else{
+    tree_filt <- ape::keep.tip(tree,rownames(pathogen_dosage_ordered))
+  }
+
   gg <- ggtree::ggtree(tree_filt,layout='circular',branch.length = 'none')
   gg <- gg %<+% metadata + geom_tippoint(aes(color = factor(Host_SNP)),size=1.5,show.legend = T) + scale_color_manual(values=c('grey','green','red')) + labs(color = host_snp)
   
@@ -35,8 +44,11 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path)
     nodes[i] <- getMRCA(tree_filt, as.character(metadata$ID[which(cur_dosage==cur_minor_allele)]))
     #If AA variant is not monophyletic
     if(length(unlist(phangorn::Descendants(tree_filt,nodes[i],type = 'tips'))) != length(which(cur_dosage==cur_minor_allele))){
+      #Highlight larget sublineage
+      cur_node <- getMRCA(tree_filt, setdiff(as.character(metadata$ID[which(cur_dosage==cur_minor_allele)]),c(pathogen_data$G_NUMBER[!pathogen_data$Sublineage %in% names(sort(table(sublineage$Sublineage),decreasing = T))[1]],tips_to_excl)))
       new_gg <- ggtree::ggtree(tree_filt,layout='circular',branch.length = 'none')
       new_gg <- new_gg %<+% data.frame(metadata,Patho_Variant = factor(as.vector(pathogen_dosage_ordered[,i]))) + geom_tippoint(aes(shape = factor(Patho_Variant),color = factor(Host_SNP)),size=2,show.legend = T) + scale_color_manual(values=c('grey','green','red')) + labs(color = host_snp,shape = AA_variant[i])
+      new_gg <- new_gg + geom_hilight(node = cur_node,fill = cl_gradient[cl_cnt],extend = -0.5*cl_cnt,alpha = 0.2)
       system(glue::glue("mkdir -p {out_path}/LINEAGE_{lineage}/"))
       ggsave(filename = glue::glue("{out_path}/LINEAGE_{lineage}/{host_snp}_{AA_variant[i]}.pdf"),plot = new_gg,height = 10,width = 15)
       next
@@ -64,16 +76,17 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path)
     ggsave(filename = glue::glue("{out_path}/LINEAGE_{lineage}/{host_snp}.pdf"),plot = p1,height = 10,width = 15)
   }
 }
-VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10//G2G_Obj.rds'),
-             host_snp = 'rs12151990',
-             AA_variant = 'Rv2348c_Rv2348c:2626678:p.Ile101Met',
-             lineage = 'L4',
-             phylotree = '../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
-             out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10//PLINK/PC_3_pPC_0/Stratified_False/')
-
-# VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True/G2G_Obj.rds'),
-#              host_snp = 'rs75769176',
-#              AA_variant = 'fixA_Rv3029c:3388671:p.Thr67Met',
-#              lineage = 'L3',
+# VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10//G2G_Obj.rds'),
+#              host_snp = 'rs12151990',
+#              AA_variant = 'Rv2348c_Rv2348c:2626678:p.Ile101Met',
+#              lineage = 'L4',
 #              phylotree = '../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
-#              out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True/PLINK/PC_3_pPC_0/Stratified_True/')
+#              out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10//PLINK/PC_3_pPC_0/Stratified_False/',
+#              tips_to_excl = 'G36169')
+
+VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds'),
+             host_snp = 'rs75769176',
+             AA_variant = 'fixA_Rv3029c:3388671:p.Thr67Met',
+             lineage = 'L3',
+             phylotree = '../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
+             out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/')

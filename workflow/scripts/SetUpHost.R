@@ -56,7 +56,7 @@ SetUpHost <- function(Metadata_Path,BFILE_Path,Out_Path,excl_regions,covars_disc
   
   ### Set-up Phenotype ###
   #Load metadata file
-  metadata <- data.table::fread(Metadata_Path,na.strings = c("",'unknown'),stringsAsFactors = T) %>%
+  metadata <- data.table::fread(Metadata_Path,na.strings = c("",'unknown','NA'),stringsAsFactors = T) %>%
     dplyr::select(any_of(c('PATIENT_ID',covars_discrete_to_incl,covars_numeric_to_incl))) %>% dplyr::mutate(PATIENT_ID = as.character(PATIENT_ID)) 
   
   #Parse sample ID
@@ -132,6 +132,14 @@ SetUpHLA <- function(VCF_File,Out_Path,MAF_Thresh = 0.01,Info_Thresh = 0.8){
   system(glue::glue("plink2 --vcf {VCF_File} --extract {Out_Path}Host/Alleles_to_keep.txt --maf {MAF_Thresh} --make-bed --double-id --out {Out_Path}Host/TB_DAR_HLA_Alleles"))
   
 }
+
+# Metadata_Path <- '../../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt'
+# BFILE_Path <- '../../data/Genotyping_WGS/TBDAR.WGS.Imputed.GWASReady'
+# HLA_Path <-'../../data/HLA/FourDigits/chr6.dose.vcf.gz'
+# OUT_dir <- '../../scratch/'
+# excl_regions <- '../../data/exclusion_regions_hg19.txt'
+# n_cores <- 1
+
 
 args <- commandArgs(trailingOnly = TRUE)
 Metadata_Path <- args[[1]]

@@ -207,16 +207,16 @@ ggpubr::ggarrange(p6,p7,p8,p9,nrow=4)
 
 ## G2G Results - Manhattan
 ```{r manhattan}
-fixA_res <- data.table::fread(cmd = 'zcat ../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/fixA_Rv3029c:3388671:p.Thr67Met.fixA_Rv3029c:3388671:p.Thr67Met.glm.logistic.hybrid.gz')
+fixA_res <- data.table::fread(cmd = 'zcat ../../results/archive/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/fixA_Rv3029c:3388671:p.Thr67Met.fixA_Rv3029c:3388671:p.Thr67Met.glm.logistic.hybrid.gz')
 p1 <- ggman::ggman(fixA_res %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('fixA_Rv3029c:3388671:p.Thr67Met') + geom_hline(yintercept = -log10(5e-8/420),colour = 'red',linetype  = 'dashed') + ylim(1,12) 
-fixA_sig <- dplyr::filter(fixA_res,P < 5e-8/420)
+fixA_sig <- dplyr::filter(fixA_res,P < 5e-8/519)
 ggman::ggmanLabel(p1, labelDfm = fixA_sig, snp = "ID", label = "ID")
 GWAS.utils::QQplot(fixA_res$P,main = "fixA_Rv3029c:3388671:p.Thr67Met")
 text(paste0('Lambda=',round(GWAS.utils::genomic_inflation(P=fixA_res$P),2)),x=1,y = 8)
 
-rv2348_res <- data.table::fread(cmd = 'zcat ../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz')
+rv2348_res <- data.table::fread(cmd = 'zcat ../../results/archive/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz')
 p2 <- ggman::ggman(rv2348_res %>% dplyr::filter(P<0.1),snp = "ID", bp = "POS", chrom = "#CHROM", pvalue = "P") + ggtitle('Rv2348c_Rv2348c:2626678:p.Ile101Met') + geom_hline(yintercept = -log10(5e-8/420),colour = 'red',linetype  = 'dashed') + ylim(1,12) 
-rv2348_sig <- dplyr::filter(rv2348_res,P < 5e-8/420)
+rv2348_sig <- dplyr::filter(rv2348_res,P < 5e-8/519)
 ggman::ggmanLabel(p2, labelDfm = rv2348_sig, snp = "ID", label = "ID")
 GWAS.utils::QQplot(rv2348_res$P,main = "Rv2348c_Rv2348c:2626678:p.Ile101Met")
 text(paste0('Lambda=',round(GWAS.utils::genomic_inflation(P=rv2348_res$P),2)),x=1,y = 8)
