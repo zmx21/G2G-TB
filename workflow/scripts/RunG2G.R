@@ -3,6 +3,7 @@ library(dplyr)
 library(data.table)
 library(glue)
 library(stringr)
+set.seed(12345)
 
 GetResults <- function(OUT_DIR,suffix = 'glm.logistic.hybrid',p_thresh=5e-8,n_cores=5,is_interaction = F,is_ordinal = F,tool = 'PLINK'){
   all_files <- dir(OUT_DIR)
@@ -12,8 +13,10 @@ GetResults <- function(OUT_DIR,suffix = 'glm.logistic.hybrid',p_thresh=5e-8,n_co
       results <- pbmclapply(result_files,function(x) data.table::fread(cmd = paste0("awk '{ if (NR == 1 || $13 <= ",p_thresh,") {print} }' ",OUT_DIR,x)),mc.cores = n_cores)
     }else if ((tool == 'PLINK' | tool == 'PLINK-FIRTH') & grepl(x=suffix,pattern = 'gz')){
       results <- pbmclapply(result_files,function(x) data.table::fread(cmd = paste0('zcat ',OUT_DIR,x," | awk '{ if (NR == 1 || $13 <= ",p_thresh,") {print} }' ")),mc.cores = n_cores)
-    }else if(tool == 'GMMAT-SCORE'){
-      results <- pbmclapply(result_files,function(x) data.table::fread(cmd = paste0('zcat ',OUT_DIR,x," | awk '{ if (NR == 1 || $11 <= ",p_thresh,") {print} }' ")),mc.cores = n_cores)
+    }else if(tool == 'HLA-PLINK' ){
+      results <- pbmclapply(result_files,function(x) data.table::fread(cmd = paste0('zcat ',OUT_DIR,x)),mc.cores = n_cores)
+    }else if(tool == 'HLA-PLINK-PERM' ){
+      results <- pbmclapply(result_files,function(x) data.table::fread(cmd = paste0('zcat ',OUT_DIR,x),select = c('ID','P')),mc.cores = n_cores)
     }
   }else{
     if(is_ordinal){
@@ -26,7 +29,7 @@ GetResults <- function(OUT_DIR,suffix = 'glm.logistic.hybrid',p_thresh=5e-8,n_co
   return(results)
 }
 
-RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = 'PLINK',n_PC = 5,n_pPC = 6,n_cores = 20,covars_to_incl = c(),
+RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool,n_PC = 5,n_pPC = 6,n_cores = 20,covars_to_incl = c(),
                    lineage = c(),stratified = T,debug=F,chr = c(),test_snp = c(),model = NA,var_type = 'both'){
   system(glue::glue("mkdir -p {OUT_DIR}"))
   OUT_DIR <- glue::glue("{OUT_DIR}/{tool}/")
@@ -44,7 +47,7 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = 'PLINK',n_PC = 5,n_pPC = 
   #Initialize results object
   saveRDS(list(),glue::glue("{OUT_DIR}/G2G_results.rds"))
   
-  if (tool == 'PLINK' | tool == 'PLINK-FIRTH' | tool == 'HLA-PLINK' | tool == 'SAIGE' | tool == 'GMMAT-SCORE' | tool == 'GMMAT-WALD'){
+  if (tool == 'PLINK' | tool == 'PLINK-FIRTH' | tool == 'HLA-PLINK' | tool == 'HLA-PLINK-PERM'){
     if(length(lineage)==0 & stratified){
       lineages_to_run <- unique(names(G2G_Obj$aa_matrix_filt))
     }else if(length(lineage) > 0 & stratified){
@@ -150,6 +153,23 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = 'PLINK',n_PC = 5,n_pPC = 
         end_index <- ncol(AA_Matrix_No_ID)
       }
       
+      #Generate Permutations if specified
+      if(tool == 'HLA-PLINK-PERM'){
+        N_Perm = 100
+        
+        Alleles_Path <- gsub(x=G2G_Obj$host_path[cur_lineage],pattern = 'G2G',replacement = 'HLA_Alleles_G2G')
+        AA_Path <- gsub(x=G2G_Obj$host_path[cur_lineage],pattern = 'G2G',replacement = 'HLA_AA_G2G')
+        system(glue::glue("mkdir -p {OUT_PATH_Lineage}/HLA_Allele/"))
+        system(glue::glue("mkdir -p {OUT_PATH_Lineage}/HLA_AA/"))
+        
+        true_fam_file <- data.table::fread(glue::glue("{Alleles_Path}.fam"))
+        
+        perm_fam_file <- lapply(1:N_Perm,function(x) true_fam_file[sample(1:nrow(true_fam_file),size = nrow(true_fam_file),replace = F),])
+        
+        lapply(1:N_Perm,function(x) data.table::fwrite(perm_fam_file[[x]],glue::glue("{OUT_PATH_Lineage}/perm_{x}.fam"),sep = '\t',col.names = F,row.names = F))
+      }
+      
+      
       pbmclapply(1:end_index,function(k){
         cur_pathogen_variant <- colnames(AA_Matrix_No_ID)[k]
         if(tool == 'PLINK'){
@@ -170,24 +190,46 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = 'PLINK',n_PC = 5,n_pPC = 
           system(glue::glue('pigz --fast {OUT_PATH_Lineage}{cur_pathogen_variant}*.hybrid'))
           
         }else if(tool == 'HLA-PLINK'){
-          Alleles_Path <- gsub(x=G2G_Obj$host_path[cur_lineage],pattern = 'Imputed',replacement = 'HLA_Alleles')
-          AA_Path <- gsub(x=G2G_Obj$host_path[cur_lineage],pattern = 'Imputed',replacement = 'HLA_AA')
+          Alleles_Path <- gsub(x=G2G_Obj$host_path[cur_lineage],pattern = 'G2G',replacement = 'HLA_Alleles_G2G')
+          AA_Path <- gsub(x=G2G_Obj$host_path[cur_lineage],pattern = 'G2G',replacement = 'HLA_AA_G2G')
           system(glue::glue("mkdir -p {OUT_PATH_Lineage}/HLA_Allele/"))
           system(glue::glue("mkdir -p {OUT_PATH_Lineage}/HLA_AA/"))
           
           tryCatch(system(
             glue::glue(
-              "~/Software/plink2 --threads {min(c(n_cores,22))} --bfile {Alleles_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_Allele/{cur_pathogen_variant}"
+              "~/Software/plink2 --threads {min(c(n_cores,22))} --bfile {Alleles_Path} --glm dominant cc-residualize hide-covar no-x-sex --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_Allele/{cur_pathogen_variant}"
             )
           ))
           
           tryCatch(system(
             glue::glue(
-              "~/Software/plink2 --threads {min(c(n_cores,22))} --bfile {AA_Path} --glm dominant hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_AA/{cur_pathogen_variant}"
+              "~/Software/plink2 --threads {min(c(n_cores,22))} --bfile {AA_Path} --glm dominant cc-residualize hide-covar no-x-sex --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_AA/{cur_pathogen_variant}"
             )
           ))
-        }
-        else if(tool == 'PLINK-FIRTH'){
+          system(glue::glue('pigz --fast {OUT_PATH_Lineage}/HLA_Allele/{cur_pathogen_variant}*.hybrid'))
+          system(glue::glue('pigz --fast {OUT_PATH_Lineage}/HLA_AA/{cur_pathogen_variant}*.hybrid'))
+          
+        }else if(tool == 'HLA-PLINK-PERM'){
+          for (q in 1:N_Perm){
+            system(glue::glue("mkdir -p {OUT_PATH_Lineage}/HLA_Allele/Perm_{q}/"))
+            system(glue::glue("mkdir -p {OUT_PATH_Lineage}/HLA_AA/Perm_{q}/"))
+            
+            
+            tryCatch(system(
+              glue::glue(
+                "~/Software/plink2 --threads {min(c(n_cores,22))} --bfile {Alleles_Path} --fam {OUT_PATH_Lineage}/perm_{q}.fam --glm dominant cc-residualize hide-covar no-x-sex --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_Allele/Perm_{q}/{cur_pathogen_variant}"
+              )
+            ))
+            
+            tryCatch(system(
+              glue::glue(
+                "~/Software/plink2 --threads {min(c(n_cores,22))} --bfile {AA_Path} --fam {OUT_PATH_Lineage}/perm_{q}.fam --glm dominant cc-residualize hide-covar no-x-sex --covar-variance-standardize --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}/HLA_AA/Perm_{q}/{cur_pathogen_variant}"
+              )
+            ))
+            system(glue::glue('pigz --fast {OUT_PATH_Lineage}/HLA_Allele/Perm_{q}/{cur_pathogen_variant}*.hybrid'))
+            system(glue::glue('pigz --fast {OUT_PATH_Lineage}/HLA_AA/Perm_{q}/{cur_pathogen_variant}*.hybrid'))
+          }
+        }else if(tool == 'PLINK-FIRTH'){
           tryCatch(system(
             glue::glue(
               "~/Software/plink2 --threads {min(c(n_cores,22))} --bfile {G2G_Obj$host_path[cur_lineage]} --no-sex --glm firth hide-covar --1 --pheno {OUT_PATH_Lineage}/tmp/AA_outcome.txt --pheno-col-nums {k+2} --covar {OUT_PATH_Lineage}/tmp/plink-covars.txt --out {OUT_PATH_Lineage}{cur_pathogen_variant}"
@@ -195,11 +237,24 @@ RunG2G <- function(G2G_Obj,SOFTWARE_DIR,OUT_DIR,tool = 'PLINK',n_PC = 5,n_pPC = 
           ))
         }
       },mc.cores = max(floor(n_cores / 22),1))
-      results <- list(GetResults(OUT_PATH_Lineage,suffix = 'glm.logistic.hybrid.gz',p_thresh=5e-8,n_cores=n_cores,is_interaction = F,is_ordinal = F,tool = tool))
-      names(results) <- cur_lineage
-      all_res <- readRDS(glue::glue("{OUT_DIR}/G2G_results.rds"))
-      all_res <- c(all_res,results)
-      saveRDS(all_res,glue::glue("{OUT_DIR}/G2G_results.rds"))
+      
+      if(tool == 'PLINK'){
+        results <- list(GetResults(OUT_PATH_Lineage,suffix = 'glm.logistic.hybrid.gz',p_thresh=5e-8,n_cores=n_cores,is_interaction = F,is_ordinal = F,tool = tool))
+        names(results) <- cur_lineage
+        all_res <- readRDS(glue::glue("{OUT_DIR}/G2G_results.rds"))
+        all_res <- c(all_res,results)
+        saveRDS(all_res,glue::glue("{OUT_DIR}/G2G_results.rds"))
+      }else if(tool == 'HLA-PLINK'){
+        results_allele <- list(GetResults(paste0(OUT_PATH_Lineage,'HLA_Allele/'),suffix = 'glm.logistic.hybrid.gz',p_thresh=1,n_cores=n_cores,is_interaction = F,is_ordinal = F,tool = tool))
+        names(results_allele) <- cur_lineage
+        
+        results_AA <- list(GetResults(paste0(OUT_PATH_Lineage,'HLA_AA/'),suffix = 'glm.logistic.hybrid.gz',p_thresh=1,n_cores=n_cores,is_interaction = F,is_ordinal = F,tool = tool))
+        names(results_AA) <- cur_lineage
+        
+        all_res <- readRDS(glue::glue("{OUT_DIR}/G2G_results.rds"))
+        all_res <- c(all_res,list(HLA_Allele = results_allele,HLA_AA = results_AA))
+        saveRDS(all_res,glue::glue("{OUT_DIR}/G2G_results.rds"))
+      }
     }
   }
 }
