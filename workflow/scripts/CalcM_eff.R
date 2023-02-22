@@ -39,10 +39,28 @@ CalcM_eff <- function(pheno_mat,method,prune_thresh = NA){
   return(M_eff)
   
 }
+#Group perfectly linked variants together
+ConstructVariantSets <- function(pheno_mat){
+  #Correlation matrix of the phenotypes
+  cor_mat <- cor(pheno_mat,use = 'complete.obs')
+  
+  locus_to_test <- colnames(pheno_mat)
+  variant_sets <- list()
+  counter = 1
+  while(length(locus_to_test) > 0){
+    cur_locus <- locus_to_test[1]
+    cor_with_locus <- cor_mat[cur_locus,]^2
+    linked_variants <- names(cor_with_locus)[cor_with_locus == 1]
+    variant_sets[[counter]] <- linked_variants
+    locus_to_test <- setdiff(locus_to_test[-1],linked_variants)
+    counter <- counter + 1
+  }
+  return(variant_sets)
+}
 
 
 G2G_Obj <- readRDS('../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds')
-# M_Eff = sapply(G2G_Obj$aa_matrix_filt,function(x) CalcM_eff(x,method = 'Prune',prune_thresh = 1))
-# M_Eff_full = CalcM_eff(G2G_Obj$aa_matrix_full,method = 'Prune',prune_thresh = 1)
+M_Eff = sapply(G2G_Obj$aa_matrix_filt,function(x) CalcM_eff(x,method = 'Prune',prune_thresh = 1))
+M_Eff_full = CalcM_eff(G2G_Obj$aa_matrix_full,method = 'Prune',prune_thresh = 1)
 
 Variant_Sets <- ConstructVariantSets(G2G_Obj$aa_matrix_full)

@@ -29,7 +29,8 @@ CreateSQLLite <- function(){
   dbDisconnect(db_con)
   
 }
-FindTopAssociation <- function(Host_SNP_ID){
+FindTopAssociation <- function(Host_SNP_ID,Proxy_Type = NULL){
+  print(Host_SNP_ID)
   db_con <- dbConnect(RSQLite::SQLite(), "~/G2G_TB/results/SQL/TBDAR_G2G.sqlite")
   Genotype_Path <- '../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/LINEAGE_ALL/TB_DAR_G2G'
   
@@ -41,35 +42,47 @@ FindTopAssociation <- function(Host_SNP_ID){
     res <- dbGetQuery(db_con, query)
     dbDisconnect(db_con)
     
-  }else{
-
+  }else if(is.null(Proxy_Type)){
+    res <- data.frame(Host_Variant = Host_SNP_ID,OR = NA,P = NA,Mtb_Variant = NA)
+    
+    
+  }else if(Proxy_Type == 'Region'){
+    
     if(!file.exists(glue::glue("{Genotype_Path}.vcf.gz"))){
       system(glue::glue('~/Software/plink2 --bfile {Genotype_Path} --export vcf bgz --out {Genotype_Path}'))
       system(glue::glue('~/Software/bcftools index -t --threads 3 {Genotype_Path}.vcf.gz'))
     }
     snp_mart <- useMart(biomart="ENSEMBL_MART_SNP", host="grch37.ensembl.org",path="/biomart/martservice", dataset="hsapiens_snp")
     snp_pos <- getBM(attributes = c('chr_name', 'chrom_start', 'chrom_end'), 
-                 filters = c('snp_filter'), 
-                  values = Host_SNP_ID, 
-                  mart = snp_mart)
+                     filters = c('snp_filter'), 
+                     values = Host_SNP_ID, 
+                     mart = snp_mart)
     
     #Get SNPs within 10000 bp 
     bcf_query <- glue::glue("~/Software/bcftools view -r {snp_pos$chr_name}:{snp_pos$chrom_start - 5000}-{snp_pos$chrom_end + 5000} {Genotype_Path}.vcf.gz | ~/Software/bcftools query -f '%ID\n'")
     SNPs_to_incl <- system(bcf_query,intern = T)
     res <- data.frame(Host_Variant = character(),OR = numeric(),P = numeric(),Mtb_Variant = character())
     for(i in 1:length(SNPs_to_incl)){
-      print(i/length(SNPs_to_incl))
       query <- glue::glue("SELECT * FROM TBDAR_G2G WHERE \"Host_Variant\" = \"{SNPs_to_incl[i]}\" ORDER BY \"P\" ASC LIMIT 1;")
       res <- rbind(res,dbGetQuery(db_con, query))
     }
-    res <- res[,which.min(res$P)]
+    res <- res[which.min(res$P),]
   }
+  
   res$Human_Query_SNP <- Host_SNP_ID
   res <- res %>% dplyr::rename(Human_Proxy_SNP = Host_Variant,Mtb_SNP = Mtb_Variant) %>% dplyr::relocate(Human_Query_SNP,Human_Proxy_SNP,Mtb_SNP,OR,P)
   return(res)
 }
-Phelan_et_al_SNPs <- c('rs267951','rs74875032','rs529617685','rs142600697','rs1118438','rs558237','rs59441182','rs4563899')
-Phelan_et_al_Results <- lapply(Phelan_et_al_SNPs,function(x) FindTopAssociation(x))
-data.table::fwrite(do.call(rbind,Phelan_et_al_Results),'../../results/Replication/Phelan_et_al.txt')
+Susceptibility_SNPs <- c('rs2057178','rs4331426','rs10956514','rs4733781','rs12437118','rs6114027','rs73226617','rs34536443','rs17155120','rs4240897','rs4921437')
+Susceptibility_Results <- lapply(Susceptibility_SNPs,function(x) FindTopAssociation(x,Proxy_Type = 'Region'))
+data.table::fwrite(do.call(rbind,Susceptibility_Results),'../../results/Replication/Susceptibility.txt')
+
+# Clade_SNPs <- c('rs17235409','rs114945555','rs3130660','rs529920','rs41472447')
+# Clade_Results <- lapply(Clade_SNPs,function(x) FindTopAssociation(x,Proxy_Type = 'Region'))
+# data.table::fwrite(do.call(rbind,Clade_Results),'../../results/Replication/Clade.txt')
+# 
+# Phelan_et_al_SNPs <- c('rs267951','rs74875032','rs60284130','rs142600697','rs1118438','rs558237','rs59441182','rs4563899')
+# Phelan_et_al_Results <- lapply(Phelan_et_al_SNPs,function(x) FindTopAssociation(x,Proxy_Type = 'Region'))
+# data.table::fwrite(do.call(rbind,Phelan_et_al_Results),'../../results/Replication/Phelan_et_al.txt')
 
 

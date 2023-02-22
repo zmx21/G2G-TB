@@ -12,6 +12,9 @@ library(cowplot)
 
 GetGWASSummaryStats <- function(sum_stats_path,offset,maf_path = '../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/LINEAGE_ALL/TB_DAR_G2G.frq'){
   #Read MAF
+  if(!file.exists(maf_path)){
+    system(glue::glue('~/Software/plink --bfile ../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/LINEAGE_ALL/TB_DAR_G2G --freq --out ../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/LINEAGE_ALL/TB_DAR_G2G'))
+  }
   maf_file <- data.table::fread(maf_path) %>% dplyr::select(ID=SNP,MAF)
   
   #Import Summary stats
@@ -284,7 +287,7 @@ RunAll <- function(GWAS_Path,Target_Gene,method = 'Coloc',Pathogen_MAC){
   GWAS_stats <- GetGWASSummaryStats(GWAS_Path,offset)
   
   tabix_paths = read.delim("https://raw.githubusercontent.com/eQTL-Catalogue/eQTL-Catalogue-resources/master/tabix/tabix_ftp_paths.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE) %>%
-    dplyr::filter(quant_method == 'ge' | quant_method == 'microarray') %>% dplyr::filter(study == 'Quach_2016' & qtl_group == 'monocyte_naive')
+    dplyr::filter(quant_method == 'ge' | quant_method == 'microarray') #%>% dplyr::filter(study == 'Quach_2016' & qtl_group == 'monocyte_naive')
   
   #Get eGene ENSEMBLE ID
   ensid = mapIds(org.Hs.eg.db,
@@ -313,14 +316,15 @@ RunAll <- function(GWAS_Path,Target_Gene,method = 'Coloc',Pathogen_MAC){
   saveRDS(PP,file = glue::glue('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/{method}/{Target_Gene}/PP.rds'))
   
 }
-RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','PRDM15',method = 'Coloc_Mask',Pathogen_MAC = 18)
-# RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','PRDM15',method = 'Coloc_Cond',Pathogen_MAC = 18)
 
-# RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','PRDM15',method = 'Coloc',Pathogen_MAC = 18)
-# RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/fixA_Rv3029c:3388671:p.Thr67Met.fixA_Rv3029c:3388671:p.Thr67Met.glm.logistic.hybrid.gz','FBXO15',method = 'Coloc')
-# RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/fixA_Rv3029c:3388671:p.Thr67Met.fixA_Rv3029c:3388671:p.Thr67Met.glm.logistic.hybrid.gz','TIMM21',method = 'Coloc')
+RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','PRDM15',method = 'Coloc')
+RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/fixA_Rv3029c:3388671:p.Thr67Met.fixA_Rv3029c:3388671:p.Thr67Met.glm.logistic.hybrid.gz','FBXO15',method = 'Coloc')
+RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/fixA_Rv3029c:3388671:p.Thr67Met.fixA_Rv3029c:3388671:p.Thr67Met.glm.logistic.hybrid.gz','TIMM21',method = 'Coloc')
 # RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','C2CD2',method = 'Coloc')
 # RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','RIPK4',method = 'Coloc')
+
+# RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','PRDM15',method = 'Coloc_Mask',Pathogen_MAC = 18)
+# RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','PRDM15',method = 'Coloc_Cond',Pathogen_MAC = 18)
 
 # RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','PRDM15',method = 'Susie',Pathogen_MAC = 18)
 # RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/fixA_Rv3029c:3388671:p.Thr67Met.fixA_Rv3029c:3388671:p.Thr67Met.glm.logistic.hybrid.gz','FBXO15',method = 'Susie')
@@ -328,34 +332,26 @@ RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_
 # RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','C2CD2',method = 'Susie',Pathogen_MAC = 18)
 # RunAll('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/LINEAGE_ALL/Rv2348c_Rv2348c:2626678:p.Ile101Met.Rv2348c_Rv2348c:2626678:p.Ile101Met.glm.logistic.hybrid.gz','RIPK4',method = 'Susie',Pathogen_MAC = 18)
 
-# PRDM15_Coloc <- readRDS('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/Coloc/PRDM15/PP.rds')
-# PRDM15_Coloc_H4 <- sapply(PRDM15_Coloc,function(x) x["PP.H4.abf"])
-# PRDM15_Coloc_H4_Df <- data.frame(Tissue = names(PRDM15_Coloc),PP_H4 = PRDM15_Coloc_H4,Category = sapply(names(PRDM15_Coloc_H4),function(x) strsplit(strsplit(x=x,split = ':')[[1]][2],split = '_')[[1]][1]))
-# PRDM15_Coloc_H4_Df$Category[!PRDM15_Coloc_H4_Df$Category %in% names(table(PRDM15_Coloc_H4_Df$Category))[table(PRDM15_Coloc_H4_Df$Category) > 2]] <- 'Other'
-# 
-# ggplot2::ggplot(data = PRDM15_Coloc_H4_Df %>% dplyr::filter(PP_H4 > 0.05),aes(x=reorder(Tissue,-PP_H4),y=PP_H4)) + geom_bar(stat = 'identity') + 
-#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(~Category,scales = 'free_x',nrow=2) + ylim(0,1) + ylab('Posterior - Shared Causal Variant') + xlab('Tissue') + ggtitle('Coloc - PRDM15~rs1215990')
-# 
-# C2CD2_Coloc <- readRDS('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/Coloc/C2CD2/PP.rds')
-# C2CD2_Coloc_H4 <- sapply(C2CD2_Coloc,function(x) x["PP.H4.abf"])
-# C2CD2_Coloc_H4_Df <- data.frame(Tissue = names(C2CD2_Coloc),PP_H4 = C2CD2_Coloc_H4,Category = sapply(names(C2CD2_Coloc),function(x) strsplit(strsplit(x=x,split = ':')[[1]][2],split = '_')[[1]][1]))
-# C2CD2_Coloc_H4_Df$Category[!C2CD2_Coloc_H4_Df$Category %in% names(table(C2CD2_Coloc_H4_Df$Category))[table(C2CD2_Coloc_H4_Df$Category) > 2]] <- 'Other'
-# 
-# ggplot2::ggplot(data = C2CD2_Coloc_H4_Df %>% dplyr::filter(PP_H4 > 0.05),aes(x=reorder(Tissue,-PP_H4),y=PP_H4)) + geom_bar(stat = 'identity') + 
-#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + facet_wrap(~Category,scales = 'free_x',nrow=2) + ylim(0,1) + ylab('Posterior - Shared Causal Variant') + xlab('Tissue') + ggtitle('Coloc - C2CD2~rs1215990')
-# 
-# FBXO15_Coloc <- readRDS('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/Coloc/FBXO15/PP.rds')
-# FBXO15_Coloc_H4 <- sapply(FBXO15_Coloc,function(x) x["PP.H4.abf"])
-# FBXO15_Coloc_H4_Df <- data.frame(Tissue = names(FBXO15_Coloc),PP_H4 = FBXO15_Coloc_H4,Category = sapply(names(FBXO15_Coloc),function(x) strsplit(strsplit(x=x,split = ':')[[1]][2],split = '_')[[1]][1]))
-# FBXO15_Coloc_H4_Df$Category[!FBXO15_Coloc_H4_Df$Category %in% names(table(FBXO15_Coloc_H4_Df$Category))[table(FBXO15_Coloc_H4_Df$Category) > 2]] <- 'Other'
-# 
-# ggplot2::ggplot(data = FBXO15_Coloc_H4_Df %>% dplyr::filter(PP_H4 > 0.05),aes(x=reorder(Tissue,-PP_H4),y=PP_H4)) + geom_bar(stat = 'identity') + 
-#   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) + facet_wrap(~Category,scales = 'free_x',nrow=1) + ylim(0,1) + ylab('Posterior - Shared Causal Variant') + xlab('Tissue') + ggtitle('Coloc - FBXO15~rs1215990')
-# 
-# TIMM21_Coloc <- readRDS('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/Coloc/TIMM21/PP.rds')
-# TIMM21_Coloc_H4 <- sapply(TIMM21_Coloc,function(x) x["PP.H4.abf"])
-# TIMM21_Coloc_H4_Df <- data.frame(Tissue = names(TIMM21_Coloc),PP_H4 = TIMM21_Coloc_H4,Category = sapply(names(TIMM21_Coloc),function(x) strsplit(strsplit(x=x,split = ':')[[1]][2],split = '_')[[1]][1]))
-# TIMM21_Coloc_H4_Df$Category[!TIMM21_Coloc_H4_Df$Category %in% names(table(TIMM21_Coloc_H4_Df$Category))[table(TIMM21_Coloc_H4_Df$Category) > 2]] <- 'Other'
-# 
-# ggplot2::ggplot(data = TIMM21_Coloc_H4_Df %>% dplyr::filter(PP_H4 > 0.05),aes(x=reorder(Tissue,-PP_H4),y=PP_H4)) + geom_bar(stat = 'identity') + 
-#   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) + facet_wrap(~Category,scales = 'free_x',nrow=1) + ylim(0,1) + ylab('Posterior - Shared Causal Variant') + xlab('Tissue') + ggtitle('Coloc - TIMM21~rs1215990')
+PRDM15_Coloc <- readRDS('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/Coloc/PRDM15/PP.rds')
+PRDM15_Coloc_H4 <- sapply(PRDM15_Coloc,function(x) x["PP.H4.abf"])
+PRDM15_Coloc_H4_Df <- data.frame(Tissue = names(PRDM15_Coloc),PP_H4 = PRDM15_Coloc_H4,Category = sapply(names(PRDM15_Coloc_H4),function(x) strsplit(strsplit(x=x,split = ':')[[1]][2],split = '.PP')[[1]][1]))
+PRDM15_Coloc_H4_Df$Category[!PRDM15_Coloc_H4_Df$Category %in% names(table(PRDM15_Coloc_H4_Df$Category))[table(PRDM15_Coloc_H4_Df$Category) > 2]] <- 'Other'
+
+ggplot2::ggplot(data = PRDM15_Coloc_H4_Df %>% dplyr::filter(PP_H4 > 0.05),aes(x=reorder(Tissue,-PP_H4),y=PP_H4)) + geom_bar(stat = 'identity') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ylim(0,1) + ylab('Posterior - Shared Causal Variant') + xlab('Tissue') + ggtitle('Coloc - PRDM15')
+
+FBXO15_Coloc <- readRDS('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/Coloc/FBXO15/PP.rds')
+FBXO15_Coloc_H4 <- sapply(FBXO15_Coloc,function(x) x["PP.H4.abf"])
+FBXO15_Coloc_H4_Df <- data.frame(Tissue = names(FBXO15_Coloc),PP_H4 = FBXO15_Coloc_H4,Category = sapply(names(FBXO15_Coloc),function(x) strsplit(strsplit(x=x,split = ':')[[1]][2],split = '_')[[1]][1]))
+FBXO15_Coloc_H4_Df$Category[!FBXO15_Coloc_H4_Df$Category %in% names(table(FBXO15_Coloc_H4_Df$Category))[table(FBXO15_Coloc_H4_Df$Category) > 2]] <- 'Other'
+
+ggplot2::ggplot(data = FBXO15_Coloc_H4_Df %>% dplyr::filter(PP_H4 > 0.05),aes(x=reorder(Tissue,-PP_H4),y=PP_H4)) + geom_bar(stat = 'identity') +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + ylim(0,1) + ylab('Posterior - Shared Causal Variant') + xlab('Tissue') + ggtitle('Coloc - FBXO15')
+
+TIMM21_Coloc <- readRDS('../../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/Coloc/TIMM21/PP.rds')
+TIMM21_Coloc_H4 <- sapply(TIMM21_Coloc,function(x) x["PP.H4.abf"])
+TIMM21_Coloc_H4_Df <- data.frame(Tissue = names(TIMM21_Coloc),PP_H4 = TIMM21_Coloc_H4,Category = sapply(names(TIMM21_Coloc),function(x) strsplit(strsplit(x=x,split = ':')[[1]][2],split = '_')[[1]][1]))
+TIMM21_Coloc_H4_Df$Category[!TIMM21_Coloc_H4_Df$Category %in% names(table(TIMM21_Coloc_H4_Df$Category))[table(TIMM21_Coloc_H4_Df$Category) > 2]] <- 'Other'
+
+ggplot2::ggplot(data = TIMM21_Coloc_H4_Df %>% dplyr::filter(PP_H4 > 0.05),aes(x=reorder(Tissue,-PP_H4),y=PP_H4)) + geom_bar(stat = 'identity') +
+  theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) + ylim(0,1) + ylab('Posterior - Shared Causal Variant') + xlab('Tissue') + ggtitle('Coloc - TIMM21')

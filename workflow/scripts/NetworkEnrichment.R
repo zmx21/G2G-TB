@@ -27,6 +27,10 @@ ParseMtbNetwork <- function(tbl_path){
   return(list(genes=genes,regulators=regulators,tbl_info=tbl_info))
 }
 
+ParseMtbNetworkStringDB <- function(){
+  
+}
+
 ConstructAdjMatrix <- function(results_path,g2g_obj,pthresh = 0.1){
   #Read in PASCAL files with P-values and Gene IDs
   res_list <- list()

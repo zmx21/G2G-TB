@@ -1,13 +1,13 @@
-TB_DAR_Samples <- system('~/Software/bcftools query -l ../../../Genotyping_WGS/TBDAR.WGS.Imputed.AnalysisReady.vcf.gz',intern = T)
+TB_DAR_Samples <- system('~/Software/bcftools query -l ../../../data/Genotyping_WGS/TBDAR.WGS.Imputed.AnalysisReady.vcf.gz',intern = T)
 Patient_IDs <- sapply(TB_DAR_Samples,function(x) strsplit(x,split = '_')[[1]][2])
 Patient_IDs <- sapply(Patient_IDs,function(x) gsub(x=x,pattern = 'Fellay.',replacement = ''))
 
 Dup_IDs <- TB_DAR_Samples[which(Patient_IDs %in% Patient_IDs[duplicated(Patient_IDs)])]
 Dup_IDs_df <- data.frame(FID = Dup_IDs,IID = Dup_IDs)
-data.table::fwrite(Dup_IDs_df,'../../../Genotyping_WGS/regenotyped.ids',sep = ' ',row.names = F,quote = F)
-system('~/Software/plink2 --bfile ../../../Genotyping_WGS/TBDAR.WGS.Imputed.AnalysisReady --chr 1-22 --keep ../../../Genotyping_WGS/regenotyped.ids --make-bed --out ../../../Genotyping_WGS/TBDAR.Regenotyped')
+data.table::fwrite(Dup_IDs_df,'../../../data/Genotyping_WGS/regenotyped.ids',sep = ' ',row.names = F,quote = F)
+system('~/Software/plink2 --bfile ../../../data/Genotyping_WGS/TBDAR.WGS.Imputed.AnalysisReady --chr 1-22 --keep ../../../Genotyping_WGS/regenotyped.ids --make-bed --out ../../../Genotyping_WGS/TBDAR.Regenotyped')
 
-regenotyped_plink <- snpStats::read.plink('../../../Genotyping_WGS/TBDAR.Regenotyped')
+regenotyped_plink <- snpStats::read.plink('../../../data/Genotyping_WGS/TBDAR.Regenotyped')
 
 WGS_Genotypes <- regenotyped_plink$genotypes[sapply(regenotyped_plink$fam$member,function(x) grepl(x=x,pattern = 'WGS')),]
 rownames(WGS_Genotypes) <- sapply(rownames(WGS_Genotypes) ,function(x) strsplit(x=x,split = '\\.')[[1]][2])

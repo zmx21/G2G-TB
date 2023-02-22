@@ -6,11 +6,11 @@ GetPCAOutliers <- function(PCA_results,target_POP){
   genotyping_pca <- data.table::fread(PCA_results) %>% dplyr::select(ID=V2,PC1=V3,PC2=V4)
   genotyping_pca <- genotyping_pca %>% dplyr::left_join(pop_tbl %>% dplyr::select(ID,SuperPopulation))
   
-  genotyping_pca$SuperPopulation[is.na(genotyping_pca$SuperPopulation)] <- 'TARGET'
+  genotyping_pca$SuperPopulation[is.na(genotyping_pca$SuperPopulation)] <- 'TBDAR'
   
   library(class)
-  non_target_set <- genotyping_pca %>% dplyr::filter(SuperPopulation != 'TARGET' & SuperPopulation != 'AMR') %>% dplyr::select(-SuperPopulation,-ID) #Train KNN based on 1KG 
-  non_target_set_class <- genotyping_pca %>% dplyr::filter(SuperPopulation != 'TARGET' & SuperPopulation != 'AMR') %>% dplyr::select(SuperPopulation) #Labels for the Train set
+  non_target_set <- genotyping_pca %>% dplyr::filter(SuperPopulation != 'TBDAR' & SuperPopulation != 'AMR') %>% dplyr::select(-SuperPopulation,-ID) #Train KNN based on 1KG 
+  non_target_set_class <- genotyping_pca %>% dplyr::filter(SuperPopulation != 'TBDAR' & SuperPopulation != 'AMR') %>% dplyr::select(SuperPopulation) #Labels for the Train set
   non_target_set_class <- factor(non_target_set_class$SuperPopulation)
   
   train_sample <- sample(1:nrow(non_target_set),size = 0.7*nrow(non_target_set),replace = F)
@@ -18,14 +18,14 @@ GetPCAOutliers <- function(PCA_results,target_POP){
   train_set_class <- non_target_set_class[train_sample]
   test_set <- non_target_set[-train_sample,]
   
-  target_set <- genotyping_pca %>% dplyr::filter(SuperPopulation == 'TARGET') 
+  target_set <- genotyping_pca %>% dplyr::filter(SuperPopulation == 'TBDAR') 
   target_set_pred <- target_set  %>% dplyr::select(-ID,-SuperPopulation)
   knn_test <- knn(train = train_set,test = test_set,cl=train_set_class,k=4)
   print(glue::glue('Testing Accuracy: {sum(knn_test == non_target_set_class[-train_sample]) / length(knn_test)}'))
   
   knn_target <- knn(train = non_target_set,test = target_set_pred,cl=non_target_set_class,k=4) 
   outliers <- target_set$ID[knn_target != target_POP]
-  p1 <- ggplot2::ggplot(genotyping_pca %>% dplyr::filter(SuperPopulation != 'AMR')) + aes(x=PC1,y=PC2,color = SuperPopulation) + geom_point() + ggrepel::geom_text_repel(data = genotyping_pca %>% dplyr::filter(ID %in%outliers),aes(x=PC1,y=PC2,label = ID))
+  p1 <- ggplot2::ggplot(genotyping_pca %>% dplyr::filter(SuperPopulation != 'AMR')) + aes(x=PC1,y=PC2,color = SuperPopulation) + geom_point() + ggrepel::geom_label_repel(data = genotyping_pca %>% dplyr::filter(ID %in%outliers),aes(x=PC1,y=PC2,label = ID),show.legend = FALSE)
   
   return(list(outliers=outliers,p1=p1))
   
