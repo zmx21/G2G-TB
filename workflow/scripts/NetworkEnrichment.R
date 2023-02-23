@@ -4,10 +4,12 @@ library(igraph)
 library(org.Hs.eg.db)
 library(annotate)
 
-ParseMtbNetwork <- function(tbl_path){
+ParseMtbNetwork <- function(tbl_path,genes_to_excl){
   #Genes of each cluster
   tbl <- data.table::fread(tbl_path)
   genes <- lapply(tbl$genes,function(x) unlist(strsplit(x=x,split = '\\|')))
+  #Exclude specified genes (PE/PPE etc)
+  genes <- lapply(genes,function(x) x[!x %in% genes_to_excl]) 
   names(genes) <- tbl$bicluster
   
   #Regulators of each cluster 
@@ -25,10 +27,6 @@ ParseMtbNetwork <- function(tbl_path){
   tbl_info <- dplyr::select(tbl,bicluster,n_genes=nrow,score,functions)
   
   return(list(genes=genes,regulators=regulators,tbl_info=tbl_info))
-}
-
-ParseMtbNetworkStringDB <- function(){
-  
 }
 
 ConstructAdjMatrix <- function(results_path,g2g_obj,pthresh = 0.1){
@@ -177,43 +175,66 @@ VisualizeClusters <- function(edge_matrix){
   plot(g, layout=layout.bipartite, vertex.size=20, vertex.label.cex=0.8)
   
 }
+#Import PASCAL results
+results_path <- '~/G2G_TB/results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/'
+g2g_obj <- readRDS(paste0(results_path,'G2G_results.rds'))
+g2g_adj_mat <- ConstructAdjMatrix(results_path,g2g_obj,pthresh = 0.1)
+saveRDS(g2g_adj_mat,'~/G2G_TB/results/Network/G2G_Adj_Mat.rds')
 
+#For Genes in LD, take fusion gene score
+host_gene_sets <- GSA.read.gmt('~/Software/PASCAL/resources/genesets/msigdb/msigBIOCARTA_KEGG_REACTOME.gmt')
+host_gene_sets_meta <- ConstructMetageneClusters(host_gene_sets,colnames(g2g_adj_mat$res_matrix_binary))
+saveRDS(host_gene_sets_meta,'~/G2G_TB/results/Network/msigBIOCARTA_KEGG_REACTOME_meta.rds')
 
+#Mtb. PE,PPE,PGRS, and phages
+locus_to_excl <- data.table::fread('../../data/Mtb/Locus_to_exclude_Mtb.txt',fill = T)
+locus_to_excl_RvIDs <- sapply(locus_to_excl$`locus tag`,function(x) ifelse(grepl(x=x,pattern = '-'),strsplit(x=x,split = '-')[[1]][2],x),USE.NAMES = F)
+locus_to_excl_RvIDs <- sapply(locus_to_excl_RvIDs,function(x) ifelse(grepl(x=x,pattern = 'PE'),strsplit(x=x,split = 'PE')[[1]][1],x),USE.NAMES = F)
 
-# results_path <- '~/G2G_TB/results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/'
-# g2g_obj <- readRDS(paste0(results_path,'G2G_results.rds'))
-# g2g_adj_mat <- ConstructAdjMatrix(results_path,g2g_obj,pthresh = 0.15)
-# saveRDS(g2g_adj_mat,'~/G2G_TB/results/Network/G2G_Adj_Mat.rds')
-# 
-# host_gene_sets <- GSA.read.gmt('~/Software/PASCAL/resources/genesets/msigdb/msigBIOCARTA_KEGG_REACTOME.gmt')
-# host_gene_sets_meta <- ConstructMetageneClusters(host_gene_sets,colnames(g2g_adj_mat$res_matrix_binary))
-# saveRDS(host_gene_sets_meta,'~/G2G_TB/results/Network/msigBIOCARTA_KEGG_REACTOME_meta.rds')
-# 
-# mtb_network_tbl <- ParseMtbNetwork('~/G2G_TB/data/Mtb/MTB_Network/mtb_bicluster_attributes.txt')
-# mtb_network_gene_sets <- mtb_network_tbl$genes
-# g2g_cluster_mat <- ConstructClusterClusterMatrix(g2g_adj_mat = g2g_adj_mat$res_matrix_binary,
-#                                                  host_gene_sets_meta = host_gene_sets_meta,
-#                                                  mtb_network_gene_sets = mtb_network_gene_sets)
-# saveRDS(g2g_cluster_mat,'~/G2G_TB/results/Network/G2G_Cluster_Mat.rds')
-# 
-# g2g_adj_mat <- readRDS('~/G2G_TB/results/Network/G2G_Adj_Mat.rds')
-# host_gene_sets_meta <- readRDS('~/G2G_TB/results/Network/msigBIOCARTA_KEGG_REACTOME_meta.rds')
-# mtb_network_tbl <- ParseMtbNetwork('~/G2G_TB/data/Mtb/MTB_Network/mtb_bicluster_attributes.txt')
-# mtb_network_gene_sets <- mtb_network_tbl$genes
-# 
-# N_Perm <- 1000
-# N_Cores <- 10
-# permuted_host_geneset <- lapply(1:N_Perm,function(i) PermuteGeneset(i,host_gene_sets_meta))
-# saveRDS(permuted_host_geneset,'~/G2G_TB/results/Network/perm_host.rds')
-# permuted_mtb_geneset <- lapply(1:N_Perm,function(i) PermuteGeneset(i,mtb_network_gene_sets))
-# saveRDS(permuted_mtb_geneset,'~/G2G_TB/results/Network/perm_mtb.rds')
-# 
-# g2g_cluster_mat_perm <- pbmclapply(1:N_Perm,function(i) ConstructClusterClusterMatrix(g2g_adj_mat = g2g_adj_mat$res_matrix_binary,
-#                                                                                     host_gene_sets_meta = permuted_host_geneset[[i]],
-#                                                                                     mtb_network_gene_sets = permuted_mtb_geneset[[i]],
-#                                                                                     store_edges = F),mc.cores = N_Cores)
-# saveRDS(g2g_cluster_mat_perm,'~/G2G_TB/results/Network/perm_results.rds')
-# 
+#Mtb Gene Sets from CoRegulatory network
+mtb_network_tbl <- ParseMtbNetwork('~/G2G_TB/data/Mtb/MTB_Network/mtb_bicluster_attributes.txt',locus_to_excl_RvIDs)
+mtb_network_gene_sets <- mtb_network_tbl$genes
+mtb_network_gene_sets <- mtb_network_gene_sets[sapply(mtb_network_gene_sets,length) > 5]
+#Get Pathway-Pathway density
+g2g_cluster_mat <- ConstructClusterClusterMatrix(g2g_adj_mat = g2g_adj_mat$res_matrix_binary,
+                                                 host_gene_sets_meta = host_gene_sets_meta,
+                                                 mtb_network_gene_sets = mtb_network_gene_sets)
+saveRDS(g2g_cluster_mat,'~/G2G_TB/results/Network/G2G_Cluster_Mat.rds')
+
+#Mtb Gene Sets from StringDB
+mtb_stringDB_gene_sets <- readRDS('~/G2G_TB/data/Mtb/MTB_Network/StringDB/mcl_clusters_recode.rds')
+names(mtb_stringDB_gene_sets) <- paste0('StringDB',1:length(mtb_stringDB_gene_sets))
+#Get Pathway-Pathway density
+g2g_cluster_mat_stringDB <- ConstructClusterClusterMatrix(g2g_adj_mat = g2g_adj_mat$res_matrix_binary,
+                                                 host_gene_sets_meta = host_gene_sets_meta,
+                                                 mtb_network_gene_sets = mtb_stringDB_gene_sets)
+saveRDS(g2g_cluster_mat_stringDB,'~/G2G_TB/results/Network/G2G_Cluster_Mat_StringDB.rds')
+
+#Permute genesets
+N_Perm <- 1000
+N_Cores <- 20
+permuted_host_geneset <- lapply(1:N_Perm,function(i) PermuteGeneset(i,host_gene_sets_meta))
+saveRDS(permuted_host_geneset,'~/G2G_TB/results/Network/perm_host.rds')
+permuted_mtb_geneset <- lapply(1:N_Perm,function(i) PermuteGeneset(i,mtb_network_gene_sets))
+saveRDS(permuted_mtb_geneset,'~/G2G_TB/results/Network/perm_mtb.rds')
+permuted_mtb_geneset_StringDB <- lapply(1:N_Perm,function(i) PermuteGeneset(i,mtb_stringDB_gene_sets))
+saveRDS(permuted_mtb_geneset_StringDB,'~/G2G_TB/results/Network/perm_mtb_StringDB.rds')
+
+#Run permutation for Human - Mtb CoReg network genesets
+g2g_cluster_mat_perm <- pbmclapply(1:N_Perm,function(i) ConstructClusterClusterMatrix(g2g_adj_mat = g2g_adj_mat$res_matrix_binary,
+                                                                                    host_gene_sets_meta = permuted_host_geneset[[i]],
+                                                                                    mtb_network_gene_sets = permuted_mtb_geneset[[i]],
+                                                                                    store_edges = F),mc.cores = N_Cores)
+saveRDS(g2g_cluster_mat_perm,'~/G2G_TB/results/Network/perm_results.rds')
+
+#Run permutation for Human - Mtb StringDB genesets
+g2g_cluster_mat_perm_StringDB <- pbmclapply(1:N_Perm,function(i) ConstructClusterClusterMatrix(g2g_adj_mat = g2g_adj_mat$res_matrix_binary,
+                                                                                      host_gene_sets_meta = permuted_host_geneset[[i]],
+                                                                                      mtb_network_gene_sets = permuted_mtb_geneset_StringDB[[i]],
+                                                                                      store_edges = F),mc.cores = N_Cores)
+saveRDS(g2g_cluster_mat_perm_StringDB,'~/G2G_TB/results/Network/perm_results_StringDB.rds')
+
+#Visualize top cluster
 # g2g_cluster_mat <- readRDS('~/G2G_TB/results/Network/G2G_Cluster_Mat.rds')
 # VisualizeClusters(g2g_cluster_mat$edges_cluster[[582]][[7]])
 # 
@@ -222,15 +243,15 @@ VisualizeClusters <- function(edge_matrix){
 # perm_density <- sapply(g2g_cluster_mat_perm,function(x) max(x$res_matrix_cluster))
 
 # Density estimation
-den <- density(perm_density)
-
-# Plot
-hist(perm_density,freq = FALSE, col="gray", breaks = 20,main = 'Permutation Density Values',xlab = 'Module-Module Density')
-lines(den)
-
-value <- max(g2g_cluster_mat$res_matrix_cluster)
-polygon(c(den$x[den$x >= value ], value),
-        c(den$y[den$x >= value ], 0),
-        col = "red",
-        border = 1)
-text(x = 0.15,y = 5,paste0('p = ',sum(perm_density > value) / length(perm_density)))
+# den <- density(perm_density)
+# 
+# # Plot
+# hist(perm_density,freq = FALSE, col="gray", breaks = 20,main = 'Permutation Density Values',xlab = 'Module-Module Density')
+# lines(den)
+# 
+# value <- max(g2g_cluster_mat$res_matrix_cluster)
+# polygon(c(den$x[den$x >= value ], value),
+#         c(den$y[den$x >= value ], 0),
+#         col = "red",
+#         border = 1)
+# text(x = 0.15,y = 5,paste0('p = ',sum(perm_density > value) / length(perm_density)))
