@@ -165,17 +165,23 @@ for(i in 1:length(Variant_Set)){
 Grouped_HLA_Results_Non_Epitope <- Grouped_HLA_Results[sapply(Grouped_HLA_Results,function(x) !any(x$Is_Epitope))]
 Grouped_HLA_Results_Epitope <- Grouped_HLA_Results[sapply(Grouped_HLA_Results,function(x) any(x$Is_Epitope))]
 
-Grouped_HLA_Results_Non_Epitope_df <- do.call(rbind,lapply(Grouped_HLA_Results_Non_Epitope,function(x) x %>% dplyr::select(-Position,-Mutation,-Is_Epitope,-Epitope) %>% dplyr::mutate(Epitope_Variant_Set = 'Not Annotated')))
+Grouped_HLA_Results_Non_Epitope_df <- do.call(rbind,lapply(Grouped_HLA_Results_Non_Epitope,function(x) x %>% dplyr::select(-Position,-Mutation,-Is_Epitope,-Epitope) %>% dplyr::mutate(Epitope_Variant_Set = 'Not Annotated as \n T cell Epitope')))
 Grouped_HLA_Results_Epitope_df <- do.call(rbind,lapply(Grouped_HLA_Results_Epitope,function(x) x %>% dplyr::filter(Gene %in% G2G_HLA_Results_Summary$Gene[G2G_HLA_Results_Summary$Is_Epitope] & Position %in% G2G_HLA_Results_Summary$Position[G2G_HLA_Results_Summary$Is_Epitope]) %>% 
-                                                         dplyr::select(-Position,-Mutation,-Is_Epitope,-Epitope) %>% dplyr::mutate(Epitope_Variant_Set = 'T-Cell Epitope')))
+                                                         dplyr::select(-Position,-Mutation,-Is_Epitope,-Epitope) %>% dplyr::mutate(Epitope_Variant_Set = 'T cell Epitope')))
 
 Grouped_HLA_Results_Epitope_df$Is_Antigen <- Grouped_HLA_Results_Epitope_df$Gene %in% Epitope_File$Gene_ID
 Grouped_HLA_Results_Non_Epitope_df$Is_Antigen <- Grouped_HLA_Results_Non_Epitope_df$Gene %in% Epitope_File$Gene_ID
 
 
-ggplot2::ggplot(rbind(Grouped_HLA_Results_Non_Epitope_df,Grouped_HLA_Results_Epitope_df),aes(x=Epitope_Variant_Set,y=-log10(Top_P_AA)))  + geom_dotplot(binaxis='y', stackdir='centerwhole',dotsize = 0.1,aes(fill = Is_Antigen,color = Is_Antigen)) +
+ggplot2::ggplot(rbind(Grouped_HLA_Results_Non_Epitope_df,Grouped_HLA_Results_Epitope_df),aes(x=Epitope_Variant_Set,y=-log10(Top_P_AA)))  + geom_dotplot(binaxis='y', stackdir='centerwhole',dotsize = 0.1,color = 'red',fill = 'red') +
   ggrepel::geom_label_repel(aes(x=Epitope_Variant_Set,y=-log10(Top_P_AA),label = Gene),size = 3,data = Grouped_HLA_Results_Epitope_df,max.overlaps = 20) + xlab('Annotation') + ylab('-log10(P)') + stat_summary(fun.data=mean_sdl, fun.args = list(mult=1),
-                 geom="pointrange", color="grey") + guides(fill=guide_legend(title="Known Antigen"),color = 'none')
+                 geom="pointrange", color="black") + 
+  stat_compare_means()
+
+# ggplot2::ggplot(rbind(Grouped_HLA_Results_Non_Epitope_df,Grouped_HLA_Results_Epitope_df),aes(x=Epitope_Variant_Set,y=-log10(Top_P_Allele)))  + geom_dotplot(binaxis='y', stackdir='centerwhole',dotsize = 0.1,color = 'red') +
+#   ggrepel::geom_label_repel(aes(x=Epitope_Variant_Set,y=-log10(Top_P_Allele),label = Gene),size = 3,data = Grouped_HLA_Results_Epitope_df,max.overlaps = 20) + xlab('Annotation') + ylab('-log10(P)') + stat_summary(fun.data=mean_sdl, fun.args = list(mult=1),
+#                                                                                                                                                                                                                  geom="pointrange", color="black") + 
+#   stat_compare_means()
 
 
 # N_Perm <- 100

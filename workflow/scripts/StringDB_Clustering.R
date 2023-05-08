@@ -33,7 +33,7 @@ ChooseInflation <- function(cur_subnetwork,mcl_inflation_param = c(1.5,2,2.5,5,1
   }
   
   #Run MCL across all specified inflation parameters
-  mcl_results <- lapply(mcl_inflation_param,function(x) GeneTonic::cluster_markov(cur_subnetwork, allow_singletons = T, mcl_inflation = x))
+  mcl_results <- mclapply(mcl_inflation_param,function(x) GeneTonic::cluster_markov(cur_subnetwork, allow_singletons = T, mcl_inflation = x),mc.cores = length(mcl_inflation_param))
   
   #Choose inflation with max number of clusters within size limits
   optimal_inflation_ind <- which.max(sapply(mcl_results,function(x) GetNumClustersWithinSize(x)))

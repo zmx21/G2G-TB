@@ -64,3 +64,5 @@ M_Eff = sapply(G2G_Obj$aa_matrix_filt,function(x) CalcM_eff(x,method = 'Prune',p
 M_Eff_full = CalcM_eff(G2G_Obj$aa_matrix_full,method = 'Prune',prune_thresh = 1)
 
 Variant_Sets <- ConstructVariantSets(G2G_Obj$aa_matrix_full)
+
+

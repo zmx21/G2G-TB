@@ -1,23 +1,23 @@
 #File Path
-MTB_DATA: '../data/Mtb/'
-Pheno_DATA: '../data/pheno/'
-Metdata: '../data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt'
-HLA_Data: '../data/HLA/FourDigits/'
-SCRATCH_DIR: '../scratch/'
-RESULTS_DIR: '../results/'
-host_bfile: '../data/Genotyping_WGS/TBDAR.WGS.Imputed.GWASReady'
+MTB_DATA: '/home/zmxu/G2G_TB/data/Mtb/'
+Pheno_DATA: '/home/zmxu/G2G_TB/data/pheno/'
+Metdata: '/home/zmxu/G2G_TB/data/pheno/metadata_Sinergia_final_dataset_human_bac_genome_available_QCed.txt'
+HLA_Data: '/home/zmxu/G2G_TB/data/HLA/FourDigits/'
+SCRATCH_DIR: '/home/zmxu/G2G_TB/scratch/'
+RESULTS_DIR: '/home/zmxu/G2G_TB/results/'
+host_bfile: '/home/zmxu/G2G_TB/data/Genotyping_WGS/TBDAR.WGS.Imputed.GWASReady'
 PASCAL_path: '/home/zmxu/Software/PASCAL/'
-Del_tbl: '../data/Mtb/binary_table_genes_Sinergia_final_dataset_human_bac_genome_available.txt'
+Del_tbl: '/home/zmxu/G2G_TB/data/Mtb/binary_table_genes_Sinergia_final_dataset_human_bac_genome_available.txt'
 
 #Pathogen Variant Type Settings
 SIFT: 'False'
 Burden: 'False'
 Deletion: 'False'
 Stratified: 'False'
-Analysis_Type: 'G2G' #G2G or xrayscore
+Analysis_Type: 'G2G' #G2G or xrayscore or PASCAL
 Homo_Only: 'True'
 Het_Thresh: 10 #Percent reads supporting ALT, in percentage
-tool: 'PLINK'
+tool: 'HLA-PLINK-PERM'
 
 #Pathogen Settings
 Pathogen_MAC_pPCA: 15

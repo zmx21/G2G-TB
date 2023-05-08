@@ -178,7 +178,7 @@ VisualizeClusters <- function(edge_matrix){
 #Import PASCAL results
 results_path <- '~/G2G_TB/results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/'
 g2g_obj <- readRDS(paste0(results_path,'G2G_results.rds'))
-g2g_adj_mat <- ConstructAdjMatrix(results_path,g2g_obj,pthresh = 0.1)
+g2g_adj_mat <- ConstructAdjMatrix(results_path,g2g_obj,pthresh = 0.15)
 saveRDS(g2g_adj_mat,'~/G2G_TB/results/Network/G2G_Adj_Mat.rds')
 
 #For Genes in LD, take fusion gene score
@@ -235,23 +235,28 @@ g2g_cluster_mat_perm_StringDB <- pbmclapply(1:N_Perm,function(i) ConstructCluste
 saveRDS(g2g_cluster_mat_perm_StringDB,'~/G2G_TB/results/Network/perm_results_StringDB.rds')
 
 #Visualize top cluster
-# g2g_cluster_mat <- readRDS('~/G2G_TB/results/Network/G2G_Cluster_Mat.rds')
-# VisualizeClusters(g2g_cluster_mat$edges_cluster[[582]][[7]])
-# 
-# 
-# g2g_cluster_mat_perm <- readRDS('~/G2G_TB/results/Network/perm_results.rds')
-# perm_density <- sapply(g2g_cluster_mat_perm,function(x) max(x$res_matrix_cluster))
+g2g_cluster_mat <- readRDS('~/G2G_TB/results/Network/G2G_Cluster_Mat.rds')
+VisualizeClusters(g2g_cluster_mat$edges_cluster[[531]][[7]])
+
+g2g_cluster_mat_perm <- readRDS('~/G2G_TB/results/Network/perm_results.rds')
+perm_density <- sapply(g2g_cluster_mat_perm,function(x) max(x$res_matrix_cluster))
 
 # Density estimation
-# den <- density(perm_density)
-# 
-# # Plot
-# hist(perm_density,freq = FALSE, col="gray", breaks = 20,main = 'Permutation Density Values',xlab = 'Module-Module Density')
-# lines(den)
-# 
-# value <- max(g2g_cluster_mat$res_matrix_cluster)
-# polygon(c(den$x[den$x >= value ], value),
-#         c(den$y[den$x >= value ], 0),
-#         col = "red",
-#         border = 1)
-# text(x = 0.15,y = 5,paste0('p = ',sum(perm_density > value) / length(perm_density)))
+den <- density(perm_density)
+
+# Plot
+hist(perm_density,freq = FALSE, col="gray", breaks = 20,main = 'Permutation Density Values',xlab = 'Module-Module Density')
+lines(den)
+
+value <- max(g2g_cluster_mat$res_matrix_cluster)
+polygon(c(den$x[den$x >= value ], value),
+        c(den$y[den$x >= value ], 0),
+        col = "red",
+        border = 1)
+text(x = 0.15,y = 5,paste0('p = ',sum(perm_density > value) / length(perm_density)))
+
+#Visualize top cluster
+g2g_cluster_mat_stringDB <- readRDS('~/G2G_TB/results/Network/G2G_Cluster_Mat_StringDB.rds')
+VisualizeClusters(g2g_cluster_mat_stringDB$edges_cluster[[58]][[638]])
+
+

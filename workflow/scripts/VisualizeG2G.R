@@ -47,7 +47,7 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path,
   Sublineage_Df$Sublineage[Sublineage_Df$Sublineage == ''] <- 'NA'
   Sublineage_Df$Sublineage[Sublineage_Df$Sublineage != 'NA'] <- sapply(Sublineage_Df$Sublineage[Sublineage_Df$Sublineage != 'NA'],function(x) {if(x!='NA'){paste0(strsplit(x=x,split = '\\.')[[1]][1:2],collapse = '.')}})
 
-  gg <- ggtree::ggtree(tree_filt,layout='circular',branch.length = 'none')
+  gg <- ggtree::ggtree(tree_filt,layout='circular')
   gg <- gg %<+% metadata + geom_tippoint(aes(color = factor(Host_SNP)),size=1.5,show.legend = T) + scale_color_manual(values=c('grey','green','red'),na.value = 'white') + labs(color = host_snp) +
     theme(legend.title = element_text(size=25),legend.text=element_text(size=20),title=element_text(size=30)) + ggtitle(paste0('Lineage ',lineage)) 
   
@@ -63,7 +63,7 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path,
     nodes[i] <- getMRCA(tree_filt, as.character(metadata$ID[which(cur_dosage==cur_minor_allele)]))
     #If AA variant is not monophyletic
     if(length(unlist(phangorn::Descendants(tree_filt,nodes[i],type = 'tips'))) != length(which(cur_dosage==cur_minor_allele))){
-      new_gg <- ggtree::ggtree(tree_filt,layout='circular',branch.length = 'none') +
+      new_gg <- ggtree::ggtree(tree_filt,layout='circular') +
         theme(legend.title = element_text(size=25),legend.text=element_text(size=20),title=element_text(size=30)) + ggtitle(paste0('Lineage ',lineage))
       new_gg <- new_gg %<+% data.frame(metadata) + geom_tippoint(aes(color = factor(Host_SNP)),size=2,show.legend = T) + scale_color_manual(values=c('grey','green','red')) + labs(color = host_snp)
 
@@ -74,16 +74,16 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path,
         cur_clone_nodes <- setdiff(intersect(as.character(metadata$ID[which(cur_dosage==cur_minor_allele)]),pathogen_data$G_NUMBER[pathogen_data$group %in% names(sort(table(sublineage$group),decreasing = T))[k]]),tips_to_excl)
         if(length(cur_clone_nodes) > 1){
           cur_parent <- getMRCA(tree_filt, cur_clone_nodes)
-          new_gg <- new_gg + geom_hilight(node = cur_parent,fill = cl_gradient[cl_cnt],extend = -0.5*cl_cnt,alpha = 0.9)
+          new_gg <- new_gg + geom_hilight(node = cur_parent,fill = cl_gradient[cl_cnt],extend = -0.0005,alpha = 0.9)
           
         }else{
           cur_parent <- nodeid(tree_filt, label = cur_clone_nodes)
-          new_gg <- new_gg + geom_hilight(node = cur_parent,fill = cl_gradient[cl_cnt],extend = -1*cl_cnt,alpha = 0.9)
+          new_gg <- new_gg + geom_hilight(node = cur_parent,fill = cl_gradient[cl_cnt],extend = -0.000001,alpha = 0.9)
           
         }
       }
       system(glue::glue("mkdir -p {out_path}/LINEAGE_{lineage}/"))
-      new_gg <- gheatmap(new_gg,Sublineage_Df,width = .02,offset = 0.1,legend_title = 'Sublineage') 
+      new_gg <- gheatmap(new_gg,Sublineage_Df,legend_title = 'Sublineage',offset =0.00005,  width = 0.03, hjust = 0) 
       ggsave(filename = glue::glue("{out_path}/LINEAGE_{lineage}/{host_snp}_{AA_variant[i]}.pdf"),plot = new_gg,height = 10,width = 15)
       next
     }
@@ -100,13 +100,13 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path,
     }else{
       colours <- c(colours,cl_gradient[cl_cnt])
       names <- c(names,AA_variant[i])
-      gg <- gg + geom_hilight(node = nodes[i],fill = cl_gradient[cl_cnt],extend = -0.5*cl_cnt,alpha = 0.9)
+      gg <- gg + geom_hilight(node = nodes[i],fill = cl_gradient[cl_cnt],extend = -0.0006,alpha = 0.9)
     }
   }
   if(any_clades){
     # p1 = set_hilight_legend(gg, colours, names) + theme(legend.position="right")
     p1 = gg
-    p1 <- gheatmap(p1,Sublineage_Df,width = .02,offset = 0.1,legend_title = 'Sublineage') 
+    p1 <- gheatmap(p1,Sublineage_Df,offset =0.00005,  width = 0.03,legend_title = 'Sublineage') 
     
     system(glue::glue("mkdir -p {out_path}/LINEAGE_{lineage}/"))
     ggsave(filename = glue::glue("{out_path}/LINEAGE_{lineage}/{host_snp}.pdf"),plot = p1,height = 10,width = 15)
@@ -118,13 +118,13 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path,
 #              lineage = 'L4',sublineage_only = F,
 #              phylotree = '../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
 #              out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10//PLINK/PC_3_pPC_0/Stratified_False/')
-# 
-# VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds'),
-#              host_snp = 'rs75769176',
-#              AA_variant = 'fixA_Rv3029c:3388671:p.Thr67Met',
-#              lineage = 'L3',sublineage_only = F,
-#              phylotree = '../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
-#              out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/')
+
+VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds'),
+             host_snp = 'rs75769176',
+             AA_variant = 'fixA_Rv3029c:3388671:p.Thr67Met',
+             lineage = 'L3',sublineage_only = F,
+             phylotree = '../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
+             out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/')
 
 # VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds'),
 #              host_snp = 'AA_DRB1_96_32549647_exon3_E',

@@ -539,7 +539,12 @@ CheckPheno <- function(G2G_Obj,host_snp,AA_variant,lineage,pheno){
   host_dosage_ordered[host_dosage_ordered==1] <- paste0(host_genotype$map$allele.1,host_genotype$map$allele.2)
   host_dosage_ordered[host_dosage_ordered==0] <- paste0(host_genotype$map$allele.1,host_genotype$map$allele.1)
   
-  pathogen_dosage <- G2G_Obj$aa_matrix_filt[[lineage]][,AA_variant,drop = F]
+  if(lineage == 'ALL'){
+      pathogen_dosage <- G2G_Obj$aa_matrix_full[,AA_variant,drop = F]
+
+  }else{
+      pathogen_dosage <- G2G_Obj$aa_matrix_filt[[lineage]][,AA_variant,drop = F]
+  }
   pathogen_dosage[pathogen_dosage == 2] <- 1
   pathogen_dosage_ordered <- pathogen_dosage[match(G2G_Obj$both_IDs_to_keep[[lineage]]$G_NUMBER,rownames(pathogen_dosage)),,drop = F]
   
@@ -552,7 +557,7 @@ CheckPheno <- function(G2G_Obj,host_snp,AA_variant,lineage,pheno){
   my_comparisons <- expand.grid()
 
   pathogen_data_filt <- pathogen_data_jned %>% dplyr::filter(Host_SNP != paste0(host_genotype$map$allele.1,host_genotype$map$allele.1) & !is.na(Host_SNP) & !is.na(Pathogen_SNP))
-  ggplot2::ggplot(data = pathogen_data_filt,aes(x=Group,y=TB_score)) + geom_boxplot() + stat_n_text() +   stat_compare_means(method = "anova") 
+  ggplot2::ggplot(data = pathogen_data_filt,aes_string(x='Group',y=pheno)) + geom_boxplot() + stat_n_text() +   stat_compare_means(method = "anova") 
 
   
   
@@ -560,13 +565,13 @@ CheckPheno <- function(G2G_Obj,host_snp,AA_variant,lineage,pheno){
 CheckPheno(G2G_Obj = readRDS('../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds'),
              host_snp = 'rs12151990',
              AA_variant = 'Rv2348c_Rv2348c:2626678:p.Ile101Met',
-             lineage = 'L4',
+             lineage = 'ALL',
              pheno = 'TB_score')
 
 CheckPheno(G2G_Obj = readRDS('../../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds'),
              host_snp = 'rs75769176',
              AA_variant = 'fixA_Rv3029c:3388671:p.Thr67Met',
-             lineage = 'L3',
+             lineage = 'ALL',
              pheno = 'TB_score')
 
 
@@ -668,10 +673,16 @@ table1(~ factor(patient_sex) + age + BMI + TB_RF_smoking + HIV_status + TB_score
 ## PC Plot
 ```{r PC_Plot}
 host_PC_eigenval <- data.table::fread('../../scratch/Host/TB_DAR_GWAS_PCA.eigenval')
-ggplot2::ggplot(pheno) + geom_point(aes(x=PC1,y=PC2,color = Lineage)) + 
-  labs(x = paste0('Host PC1 (',round(host_PC_eigenval$V1[1] / sum(host_PC_eigenval$V1) * 100,2),'%)'),y=paste0('Host PC2 (',round(host_PC_eigenval$V1[2] / sum(host_PC_eigenval$V1) * 100,2),'%)'))
-ggplot2::ggplot(pheno) + geom_point(aes(x=PC3,y=PC4,color = Lineage)) + 
-  labs(x = paste0('Host PC3 (',round(host_PC_eigenval$V1[3] / sum(host_PC_eigenval$V1) * 100,2),'%)'),y=paste0('Host PC4 (',round(host_PC_eigenval$V1[4] / sum(host_PC_eigenval$V1) * 100,2),'%)'))
+platform <- sapply(G2G_Obj$both_IDs_to_keep$ALL$FAM_ID,function(x) strsplit(x=x,split = '_')[[1]][1])
+platform[platform=='Batch1'] <- 'Genotyping'
+platform[platform=='Batch2'] <- 'Genotyping'
+pheno <- cbind(pheno,data.frame(platform = platform))
+
+ggplot2::ggplot(pheno) + geom_point(aes(x=PC1,y=PC2,color = platform)) + 
+  labs(x = paste0('Host PC1 (',round(host_PC_eigenval$V1[1] / sum(host_PC_eigenval$V1) * 100,2),'%)'),y=paste0('Host PC2 (',round(host_PC_eigenval$V1[2] / sum(host_PC_eigenval$V1) * 100,2),'%)'),color = 'Platform') 
+
+ggplot(data = data.frame(N_PCs = 1:20,Var_Explained = host_PC_eigenval$V1 / sum(host_PC_eigenval$V1))) + geom_bar(aes(x=N_PCs,y=Var_Explained),stat="identity") + ylab('Variance Explained') + xlab('PC')
+
 ```
 
 
