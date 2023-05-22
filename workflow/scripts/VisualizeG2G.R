@@ -83,7 +83,7 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path,
         }
       }
       system(glue::glue("mkdir -p {out_path}/LINEAGE_{lineage}/"))
-      new_gg <- gheatmap(new_gg,Sublineage_Df,legend_title = 'Sublineage',offset =0.00005,  width = 0.03, hjust = 0) 
+      new_gg <- gheatmap(new_gg,Sublineage_Df,legend_title = 'Sublineage',offset =0.00005,  width = 0.03, hjust = 0) + geom_treescale(fontsize=4, linesize=0.5)
       ggsave(filename = glue::glue("{out_path}/LINEAGE_{lineage}/{host_snp}_{AA_variant[i]}.pdf"),plot = new_gg,height = 10,width = 15)
       next
     }
@@ -105,7 +105,7 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path,
   }
   if(any_clades){
     # p1 = set_hilight_legend(gg, colours, names) + theme(legend.position="right")
-    p1 = gg
+    p1 = gg + geom_treescale(fontsize=4, linesize=0.5)
     p1 <- gheatmap(p1,Sublineage_Df,offset =0.00005,  width = 0.03,legend_title = 'Sublineage') 
     
     system(glue::glue("mkdir -p {out_path}/LINEAGE_{lineage}/"))
@@ -119,12 +119,12 @@ VisualizeG2G <- function(G2G_Obj,host_snp,AA_variant,lineage,phylotree,out_path,
 #              phylotree = '../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
 #              out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10//PLINK/PC_3_pPC_0/Stratified_False/')
 
-VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds'),
-             host_snp = 'rs75769176',
-             AA_variant = 'fixA_Rv3029c:3388671:p.Thr67Met',
-             lineage = 'L3',sublineage_only = F,
-             phylotree = '../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
-             out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/')
+# VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds'),
+#              host_snp = 'rs75769176',
+#              AA_variant = 'fixA_Rv3029c:3388671:p.Thr67Met',
+#              lineage = 'L3',sublineage_only = F,
+#              phylotree = '../data/Mtb/RAxML_bestTree.Sinergia_final_dataset_human_bac_genome_available_rerooted.nwk',
+#              out_path = '../results/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/PLINK/PC_3_pPC_0/Stratified_False/')
 
 # VisualizeG2G(G2G_Obj = readRDS('../scratch/Burden_False_SIFT_False_Del_False_HomoOnly_True_HetThresh_10/G2G_Obj.rds'),
 #              host_snp = 'AA_DRB1_96_32549647_exon3_E',
